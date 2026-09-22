@@ -1,0 +1,926 @@
+[
+  {
+    "kind": "out_intent",
+    "data": {
+      "command": "AT+CMGF?",
+      "hex": "41542b434d47463f0d"
+    }
+  },
+  {
+    "kind": "out_succeeded",
+    "data": {
+      "index": 0,
+      "kind": 1
+    }
+  },
+  {
+    "kind": "usb_read",
+    "data": {
+      "diagnostic": {
+        "actual_valid_bytes": 9,
+        "byte_count_valid": true,
+        "category": "data",
+        "elapsed_microseconds": 137,
+        "iokit_message": "(os/kern) successful",
+        "iokit_return_code": 0,
+        "iokit_return_hex": "0x00000000",
+        "pipe_reference": 2,
+        "quiet_check_passed": false,
+        "raw_size_parameter": 9,
+        "requested_bytes": 512,
+        "timeout_ms": 200
+      },
+      "number": 2,
+      "stream_offset": 0,
+      "valid_hex": "41542b434d47463f0d"
+    }
+  },
+  {
+    "kind": "usb_read",
+    "data": {
+      "diagnostic": {
+        "actual_valid_bytes": 18,
+        "byte_count_valid": true,
+        "category": "data",
+        "elapsed_microseconds": 325,
+        "iokit_message": "(os/kern) successful",
+        "iokit_return_code": 0,
+        "iokit_return_hex": "0x00000000",
+        "pipe_reference": 2,
+        "quiet_check_passed": false,
+        "raw_size_parameter": 18,
+        "requested_bytes": 512,
+        "timeout_ms": 200
+      },
+      "number": 3,
+      "stream_offset": 9,
+      "valid_hex": "0d0a2b434d47463a20300d0a0d0a4f4b0d0a"
+    }
+  },
+  {
+    "kind": "response",
+    "data": {
+      "command": {
+        "index": 0,
+        "kind": 1
+      },
+      "done": true,
+      "echo": true,
+      "lines": [
+        "+CMGF: 0"
+      ]
+    }
+  },
+  {
+    "kind": "out_intent",
+    "data": {
+      "command": "AT+CPMS?",
+      "hex": "41542b43504d533f0d"
+    }
+  },
+  {
+    "kind": "out_succeeded",
+    "data": {
+      "index": 0,
+      "kind": 2
+    }
+  },
+  {
+    "kind": "usb_read",
+    "data": {
+      "diagnostic": {
+        "actual_valid_bytes": 9,
+        "byte_count_valid": true,
+        "category": "data",
+        "elapsed_microseconds": 160,
+        "iokit_message": "(os/kern) successful",
+        "iokit_return_code": 0,
+        "iokit_return_hex": "0x00000000",
+        "pipe_reference": 2,
+        "quiet_check_passed": false,
+        "raw_size_parameter": 9,
+        "requested_bytes": 512,
+        "timeout_ms": 200
+      },
+      "number": 4,
+      "stream_offset": 27,
+      "valid_hex": "41542b43504d533f0d"
+    }
+  },
+  {
+    "kind": "usb_read",
+    "data": {
+      "diagnostic": {
+        "actual_valid_bytes": 46,
+        "byte_count_valid": true,
+        "category": "data",
+        "elapsed_microseconds": 147,
+        "iokit_message": "(os/kern) successful",
+        "iokit_return_code": 0,
+        "iokit_return_hex": "0x00000000",
+        "pipe_reference": 2,
+        "quiet_check_passed": false,
+        "raw_size_parameter": 46,
+        "requested_bytes": 512,
+        "timeout_ms": 200
+      },
+      "number": 5,
+      "stream_offset": 36,
+      "valid_hex": "0d0a2b43504d533a20224d45222c302c32332c224d45222c302c32332c224d45222c302c32330d0a0d0a4f4b0d0a"
+    }
+  },
+  {
+    "kind": "response",
+    "data": {
+      "command": {
+        "index": 0,
+        "kind": 2
+      },
+      "done": true,
+      "echo": true,
+      "lines": [
+        "+CPMS: \"ME\",0,23,\"ME\",0,23,\"ME\",0,23"
+      ]
+    }
+  },
+  {
+    "kind": "out_intent",
+    "data": {
+      "command": "AT+CNMI?",
+      "hex": "41542b434e4d493f0d"
+    }
+  },
+  {
+    "kind": "out_succeeded",
+    "data": {
+      "index": 0,
+      "kind": 3
+    }
+  },
+  {
+    "kind": "usb_read",
+    "data": {
+      "diagnostic": {
+        "actual_valid_bytes": 9,
+        "byte_count_valid": true,
+        "category": "data",
+        "elapsed_microseconds": 159,
+        "iokit_message": "(os/kern) successful",
+        "iokit_return_code": 0,
+        "iokit_return_hex": "0x00000000",
+        "pipe_reference": 2,
+        "quiet_check_passed": false,
+        "raw_size_parameter": 9,
+        "requested_bytes": 512,
+        "timeout_ms": 200
+      },
+      "number": 6,
+      "stream_offset": 82,
+      "valid_hex": "41542b434e4d493f0d"
+    }
+  },
+  {
+    "kind": "usb_read",
+    "data": {
+      "diagnostic": {
+        "actual_valid_bytes": 26,
+        "byte_count_valid": true,
+        "category": "data",
+        "elapsed_microseconds": 218,
+        "iokit_message": "(os/kern) successful",
+        "iokit_return_code": 0,
+        "iokit_return_hex": "0x00000000",
+        "pipe_reference": 2,
+        "quiet_check_passed": false,
+        "raw_size_parameter": 26,
+        "requested_bytes": 512,
+        "timeout_ms": 200
+      },
+      "number": 7,
+      "stream_offset": 91,
+      "valid_hex": "0d0a2b434e4d493a20322c312c302c302c300d0a0d0a4f4b0d0a"
+    }
+  },
+  {
+    "kind": "response",
+    "data": {
+      "command": {
+        "index": 0,
+        "kind": 3
+      },
+      "done": true,
+      "echo": true,
+      "lines": [
+        "+CNMI: 2,1,0,0,0"
+      ]
+    }
+  },
+  {
+    "kind": "out_intent",
+    "data": {
+      "command": "AT+CSMS?",
+      "hex": "41542b43534d533f0d"
+    }
+  },
+  {
+    "kind": "out_succeeded",
+    "data": {
+      "index": 0,
+      "kind": 4
+    }
+  },
+  {
+    "kind": "usb_read",
+    "data": {
+      "diagnostic": {
+        "actual_valid_bytes": 9,
+        "byte_count_valid": true,
+        "category": "data",
+        "elapsed_microseconds": 143,
+        "iokit_message": "(os/kern) successful",
+        "iokit_return_code": 0,
+        "iokit_return_hex": "0x00000000",
+        "pipe_reference": 2,
+        "quiet_check_passed": false,
+        "raw_size_parameter": 9,
+        "requested_bytes": 512,
+        "timeout_ms": 200
+      },
+      "number": 8,
+      "stream_offset": 117,
+      "valid_hex": "41542b43534d533f0d"
+    }
+  },
+  {
+    "kind": "usb_read",
+    "data": {
+      "diagnostic": {
+        "actual_valid_bytes": 24,
+        "byte_count_valid": true,
+        "category": "data",
+        "elapsed_microseconds": 104,
+        "iokit_message": "(os/kern) successful",
+        "iokit_return_code": 0,
+        "iokit_return_hex": "0x00000000",
+        "pipe_reference": 2,
+        "quiet_check_passed": false,
+        "raw_size_parameter": 24,
+        "requested_bytes": 512,
+        "timeout_ms": 200
+      },
+      "number": 9,
+      "stream_offset": 126,
+      "valid_hex": "0d0a2b43534d533a20302c312c312c310d0a0d0a4f4b0d0a"
+    }
+  },
+  {
+    "kind": "response",
+    "data": {
+      "command": {
+        "index": 0,
+        "kind": 4
+      },
+      "done": true,
+      "echo": true,
+      "lines": [
+        "+CSMS: 0,1,1,1"
+      ]
+    }
+  },
+  {
+    "kind": "out_intent",
+    "data": {
+      "command": "AT+CMGL=4",
+      "hex": "41542b434d474c3d340d"
+    }
+  },
+  {
+    "kind": "out_succeeded",
+    "data": {
+      "index": 0,
+      "kind": 5
+    }
+  },
+  {
+    "kind": "usb_read",
+    "data": {
+      "diagnostic": {
+        "actual_valid_bytes": 10,
+        "byte_count_valid": true,
+        "category": "data",
+        "elapsed_microseconds": 149,
+        "iokit_message": "(os/kern) successful",
+        "iokit_return_code": 0,
+        "iokit_return_hex": "0x00000000",
+        "pipe_reference": 2,
+        "quiet_check_passed": false,
+        "raw_size_parameter": 10,
+        "requested_bytes": 512,
+        "timeout_ms": 200
+      },
+      "number": 10,
+      "stream_offset": 150,
+      "valid_hex": "41542b434d474c3d340d"
+    }
+  },
+  {
+    "kind": "usb_read",
+    "data": {
+      "diagnostic": {
+        "actual_valid_bytes": 6,
+        "byte_count_valid": true,
+        "category": "data",
+        "elapsed_microseconds": 173,
+        "iokit_message": "(os/kern) successful",
+        "iokit_return_code": 0,
+        "iokit_return_hex": "0x00000000",
+        "pipe_reference": 2,
+        "quiet_check_passed": false,
+        "raw_size_parameter": 6,
+        "requested_bytes": 512,
+        "timeout_ms": 200
+      },
+      "number": 11,
+      "stream_offset": 160,
+      "valid_hex": "0d0a4f4b0d0a"
+    }
+  },
+  {
+    "kind": "response",
+    "data": {
+      "command": {
+        "index": 0,
+        "kind": 5
+      },
+      "done": true,
+      "echo": true,
+      "lines": []
+    }
+  },
+  {
+    "kind": "snapshot_raw",
+    "data": []
+  },
+  {
+    "kind": "out_intent",
+    "data": {
+      "command": "AT+CPMS?",
+      "hex": "41542b43504d533f0d"
+    }
+  },
+  {
+    "kind": "out_succeeded",
+    "data": {
+      "index": 0,
+      "kind": 6
+    }
+  },
+  {
+    "kind": "usb_read",
+    "data": {
+      "diagnostic": {
+        "actual_valid_bytes": 9,
+        "byte_count_valid": true,
+        "category": "data",
+        "elapsed_microseconds": 106,
+        "iokit_message": "(os/kern) successful",
+        "iokit_return_code": 0,
+        "iokit_return_hex": "0x00000000",
+        "pipe_reference": 2,
+        "quiet_check_passed": false,
+        "raw_size_parameter": 9,
+        "requested_bytes": 512,
+        "timeout_ms": 200
+      },
+      "number": 12,
+      "stream_offset": 166,
+      "valid_hex": "41542b43504d533f0d"
+    }
+  },
+  {
+    "kind": "usb_read",
+    "data": {
+      "diagnostic": {
+        "actual_valid_bytes": 46,
+        "byte_count_valid": true,
+        "category": "data",
+        "elapsed_microseconds": 136,
+        "iokit_message": "(os/kern) successful",
+        "iokit_return_code": 0,
+        "iokit_return_hex": "0x00000000",
+        "pipe_reference": 2,
+        "quiet_check_passed": false,
+        "raw_size_parameter": 46,
+        "requested_bytes": 512,
+        "timeout_ms": 200
+      },
+      "number": 13,
+      "stream_offset": 175,
+      "valid_hex": "0d0a2b43504d533a20224d45222c302c32332c224d45222c302c32332c224d45222c302c32330d0a0d0a4f4b0d0a"
+    }
+  },
+  {
+    "kind": "response",
+    "data": {
+      "command": {
+        "index": 0,
+        "kind": 6
+      },
+      "done": true,
+      "echo": true,
+      "lines": [
+        "+CPMS: \"ME\",0,23,\"ME\",0,23,\"ME\",0,23"
+      ]
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 25
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 293
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 288
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 288
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 289
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 291
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 292
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 293
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 294
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 295
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 289
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 288
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 288
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 288
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 287
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 288
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 288
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 288
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 288
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 288
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 288
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 287
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 290
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 287
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 286
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 291
+    }
+  },
+  {
+    "kind": "out_intent",
+    "data": {
+      "command": "AT+CPMS?",
+      "hex": "41542b43504d533f0d"
+    }
+  },
+  {
+    "kind": "out_succeeded",
+    "data": {
+      "index": 0,
+      "kind": 8
+    }
+  },
+  {
+    "kind": "usb_read",
+    "data": {
+      "diagnostic": {
+        "actual_valid_bytes": 9,
+        "byte_count_valid": true,
+        "category": "data",
+        "elapsed_microseconds": 192,
+        "iokit_message": "(os/kern) successful",
+        "iokit_return_code": 0,
+        "iokit_return_hex": "0x00000000",
+        "pipe_reference": 2,
+        "quiet_check_passed": false,
+        "raw_size_parameter": 9,
+        "requested_bytes": 512,
+        "timeout_ms": 200
+      },
+      "number": 7285,
+      "stream_offset": 221,
+      "valid_hex": "41542b43504d533f0d"
+    }
+  },
+  {
+    "kind": "usb_read",
+    "data": {
+      "diagnostic": {
+        "actual_valid_bytes": 46,
+        "byte_count_valid": true,
+        "category": "data",
+        "elapsed_microseconds": 55,
+        "iokit_message": "(os/kern) successful",
+        "iokit_return_code": 0,
+        "iokit_return_hex": "0x00000000",
+        "pipe_reference": 2,
+        "quiet_check_passed": false,
+        "raw_size_parameter": 46,
+        "requested_bytes": 512,
+        "timeout_ms": 200
+      },
+      "number": 7286,
+      "stream_offset": 230,
+      "valid_hex": "0d0a2b43504d533a20224d45222c302c32332c224d45222c302c32332c224d45222c302c32330d0a0d0a4f4b0d0a"
+    }
+  },
+  {
+    "kind": "response",
+    "data": {
+      "command": {
+        "index": 0,
+        "kind": 8
+      },
+      "done": true,
+      "echo": true,
+      "lines": [
+        "+CPMS: \"ME\",0,23,\"ME\",0,23,\"ME\",0,23"
+      ]
+    }
+  },
+  {
+    "kind": "out_intent",
+    "data": {
+      "command": "AT+CMGF?",
+      "hex": "41542b434d47463f0d"
+    }
+  },
+  {
+    "kind": "out_succeeded",
+    "data": {
+      "index": 0,
+      "kind": 9
+    }
+  },
+  {
+    "kind": "usb_read",
+    "data": {
+      "diagnostic": {
+        "actual_valid_bytes": 9,
+        "byte_count_valid": true,
+        "category": "data",
+        "elapsed_microseconds": 56,
+        "iokit_message": "(os/kern) successful",
+        "iokit_return_code": 0,
+        "iokit_return_hex": "0x00000000",
+        "pipe_reference": 2,
+        "quiet_check_passed": false,
+        "raw_size_parameter": 9,
+        "requested_bytes": 512,
+        "timeout_ms": 200
+      },
+      "number": 7287,
+      "stream_offset": 276,
+      "valid_hex": "41542b434d47463f0d"
+    }
+  },
+  {
+    "kind": "usb_read",
+    "data": {
+      "diagnostic": {
+        "actual_valid_bytes": 18,
+        "byte_count_valid": true,
+        "category": "data",
+        "elapsed_microseconds": 56,
+        "iokit_message": "(os/kern) successful",
+        "iokit_return_code": 0,
+        "iokit_return_hex": "0x00000000",
+        "pipe_reference": 2,
+        "quiet_check_passed": false,
+        "raw_size_parameter": 18,
+        "requested_bytes": 512,
+        "timeout_ms": 200
+      },
+      "number": 7288,
+      "stream_offset": 285,
+      "valid_hex": "0d0a2b434d47463a20300d0a0d0a4f4b0d0a"
+    }
+  },
+  {
+    "kind": "response",
+    "data": {
+      "command": {
+        "index": 0,
+        "kind": 9
+      },
+      "done": true,
+      "echo": true,
+      "lines": [
+        "+CMGF: 0"
+      ]
+    }
+  },
+  {
+    "kind": "out_intent",
+    "data": {
+      "command": "AT+CNMI?",
+      "hex": "41542b434e4d493f0d"
+    }
+  },
+  {
+    "kind": "out_succeeded",
+    "data": {
+      "index": 0,
+      "kind": 10
+    }
+  },
+  {
+    "kind": "usb_read",
+    "data": {
+      "diagnostic": {
+        "actual_valid_bytes": 9,
+        "byte_count_valid": true,
+        "category": "data",
+        "elapsed_microseconds": 62,
+        "iokit_message": "(os/kern) successful",
+        "iokit_return_code": 0,
+        "iokit_return_hex": "0x00000000",
+        "pipe_reference": 2,
+        "quiet_check_passed": false,
+        "raw_size_parameter": 9,
+        "requested_bytes": 512,
+        "timeout_ms": 200
+      },
+      "number": 7289,
+      "stream_offset": 303,
+      "valid_hex": "41542b434e4d493f0d"
+    }
+  },
+  {
+    "kind": "usb_read",
+    "data": {
+      "diagnostic": {
+        "actual_valid_bytes": 26,
+        "byte_count_valid": true,
+        "category": "data",
+        "elapsed_microseconds": 68,
+        "iokit_message": "(os/kern) successful",
+        "iokit_return_code": 0,
+        "iokit_return_hex": "0x00000000",
+        "pipe_reference": 2,
+        "quiet_check_passed": false,
+        "raw_size_parameter": 26,
+        "requested_bytes": 512,
+        "timeout_ms": 200
+      },
+      "number": 7290,
+      "stream_offset": 312,
+      "valid_hex": "0d0a2b434e4d493a20322c312c302c302c300d0a0d0a4f4b0d0a"
+    }
+  },
+  {
+    "kind": "response",
+    "data": {
+      "command": {
+        "index": 0,
+        "kind": 10
+      },
+      "done": true,
+      "echo": true,
+      "lines": [
+        "+CNMI: 2,1,0,0,0"
+      ]
+    }
+  },
+  {
+    "kind": "out_intent",
+    "data": {
+      "command": "AT+CSMS?",
+      "hex": "41542b43534d533f0d"
+    }
+  },
+  {
+    "kind": "out_succeeded",
+    "data": {
+      "index": 0,
+      "kind": 11
+    }
+  },
+  {
+    "kind": "usb_read",
+    "data": {
+      "diagnostic": {
+        "actual_valid_bytes": 9,
+        "byte_count_valid": true,
+        "category": "data",
+        "elapsed_microseconds": 113,
+        "iokit_message": "(os/kern) successful",
+        "iokit_return_code": 0,
+        "iokit_return_hex": "0x00000000",
+        "pipe_reference": 2,
+        "quiet_check_passed": false,
+        "raw_size_parameter": 9,
+        "requested_bytes": 512,
+        "timeout_ms": 200
+      },
+      "number": 7291,
+      "stream_offset": 338,
+      "valid_hex": "41542b43534d533f0d"
+    }
+  },
+  {
+    "kind": "usb_read",
+    "data": {
+      "diagnostic": {
+        "actual_valid_bytes": 24,
+        "byte_count_valid": true,
+        "category": "data",
+        "elapsed_microseconds": 96,
+        "iokit_message": "(os/kern) successful",
+        "iokit_return_code": 0,
+        "iokit_return_hex": "0x00000000",
+        "pipe_reference": 2,
+        "quiet_check_passed": false,
+        "raw_size_parameter": 24,
+        "requested_bytes": 512,
+        "timeout_ms": 200
+      },
+      "number": 7292,
+      "stream_offset": 347,
+      "valid_hex": "0d0a2b43534d533a20302c312c312c310d0a0d0a4f4b0d0a"
+    }
+  },
+  {
+    "kind": "response",
+    "data": {
+      "command": {
+        "index": 0,
+        "kind": 11
+      },
+      "done": true,
+      "echo": true,
+      "lines": [
+        "+CSMS: 0,1,1,1"
+      ]
+    }
+  },
+  {
+    "kind": "idle_timeout_summary",
+    "data": {
+      "count_is_not_actual_bytes": true,
+      "samples": 15
+    }
+  },
+  {
+    "kind": "session_end",
+    "data": {
+      "closed": true,
+      "final_used": 0,
+      "forensic_response_attribution": "INCONCLUSIVE",
+      "initial_used": 0,
+      "known_index_notifications": [],
+      "read_indices": [],
+      "recoverable_idle_interruption": false,
+      "settings_reconciled": true
+    }
+  }
+]

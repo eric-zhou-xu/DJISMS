@@ -34,6 +34,9 @@ func stopFingerprint(stop archive.M) (string, error) {
 }
 
 func (c *Core) reviewedStop(stop archive.M) (bool, error) {
+	if stop["error"] == reviewedDNS {
+		return c.reviewedDNSStop(stop)
+	}
 	if stop["error"] != reviewedAbort && stop["error"] != receive.LegacyRemovalError {
 		return false, nil
 	}
