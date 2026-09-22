@@ -3,7 +3,7 @@ import UserNotifications
 import ServiceManagement
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate, UNUserNotificationCenterDelegate {
-    let client=CoreClient()
+    var client=CoreClient()
     let store:UIStore
     init(store:UIStore=UIStore()){self.store=store;super.init()}
     var window:NSWindow!, item:NSStatusItem!, sidebar:NSVisualEffectView!, content=NSView()
@@ -34,11 +34,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         sound=store.data.sound; applyAppearance(); buildMenu(); buildWindow(); showPage(0); showWindow()
         NSWorkspace.shared.notificationCenter.addObserver(self,selector:#selector(sleeping),name:NSWorkspace.willSleepNotification,object:nil)
         NSWorkspace.shared.notificationCenter.addObserver(self,selector:#selector(waking),name:NSWorkspace.didWakeNotification,object:nil)
-        client.event={ [weak self] in self?.handle($0) }
-        client.exited={ [weak self] in guard let self=self else{return};self.timer?.invalidate();self.unavailable("接收已停止。重新打开 DJISMS 后将核验档案并恢复。",phase:"stopped");if self.shuttingDown{NSApp.reply(toApplicationShouldTerminate:true)} }
-        do{try client.launch()}catch{unavailable("无法启动接收服务。请重新打开完整的 DJISMS 应用。",phase:"stopped")}
-        timer=Timer.scheduledTimer(withTimeInterval:2,repeats:true){[weak self] _ in self?.poll()}
+        startReceiver()
         checkPermission(request:true)
+    }
+    func startReceiver(){
+        guard !shuttingDown,!client.isRunning else{return}
+        timer?.invalidate();polling=false
+        client=CoreClient()
+        client.event={ [weak self] in self?.handle($0) }
+        client.exited={ [weak self] in
+            guard let self=self else{return}
+            self.timer?.invalidate();self.polling=false
+            self.unavailable(self.client.lastFailure ?? "核心服务已停止。点击刷新状态重新启动并核验档案。",phase:"stopped")
+            if self.shuttingDown{NSApp.reply(toApplicationShouldTerminate:true)}
+        }
+        unavailable("正在启动接收服务并校验永久档案…",phase:"starting")
+        do{try client.launch()}catch{unavailable("无法启动接收服务：\(error.localizedDescription)",phase:"stopped")}
+        timer=Timer.scheduledTimer(withTimeInterval:2,repeats:true){[weak self] _ in self?.poll()}
     }
     func button(_ title:String,_ action:Selector) -> NSButton { let b=NSButton(title:title,target:self,action:action);b.bezelStyle = .rounded;return b }
     func buildMenu() {
@@ -125,15 +137,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         let v=stack([mark,label("DJISMS",24,.bold),label("版本 1.0.0 · UI 候选",13),label("只接收短信 · 本地保存 · 简单可靠",13),label("© 2026 DJISMS. All rights reserved.",11,.regular,.secondaryLabelColor),label(build,10,.regular,.tertiaryLabelColor),button("使用帮助",#selector(help))],spacing:12);v.alignment = .centerX;v.translatesAutoresizingMaskIntoConstraints=false;content.addSubview(v);NSLayoutConstraint.activate([v.centerXAnchor.constraint(equalTo:content.centerXAnchor),v.centerYAnchor.constraint(equalTo:content.centerYAnchor),v.leadingAnchor.constraint(greaterThanOrEqualTo:content.leadingAnchor,constant:18),v.trailingAnchor.constraint(lessThanOrEqualTo:content.trailingAnchor,constant:-18)])
     }
     func poll(){guard client.isReady,!shuttingDown,!polling else{return};polling=true;client.request("status"){[weak self] response in guard let self=self else{return};self.polling=false;if response["error"] != nil{self.unavailable("接收状态暂时无法确认，正在等待服务恢复。");return};guard let data=response["data"] as? [String:Any] else{return};if let s=data["state"] as? [String:Any]{self.state=s};if let p=data["preferences"] as? [String:Any]{self.notifications=p["notifications"] as? Bool ?? true;self.autoPurge=p["auto_purge"] as? Bool ?? true};self.renderStatus();self.fetchNotifications()}}
-    func handle(_ event:[String:Any]){if event["error"] != nil{unavailable("接收服务需要检查。原始短信完整保留，请先退出后重新打开应用。",phase:"stopped");return};switch event["event"] as? String{case "initializing":unavailable("正在校验永久档案，完成后自动接收…",phase:"starting");case "hello":refreshHistory();poll();case "state":if let s=event["data"] as? [String:Any]{state=s;renderStatus()};case "history_changed":scheduleHistory();case "stopped":if shuttingDown{NSApp.reply(toApplicationShouldTerminate:true)};default:break}}
-    func unavailable(_ text:String,phase:String="checking"){state=["phase":phase,"connected":false];renderStatus();statusText.stringValue=text}
+    func handle(_ event:[String:Any]){if event["error"] != nil{unavailable(event["error"] as? String ?? "接收服务需要检查。",phase:"stopped");return};switch event["event"] as? String{case "initializing":unavailable("正在校验永久档案，完成后自动接收…",phase:"starting");case "hello":refreshHistory();poll();case "state":if let s=event["data"] as? [String:Any]{state=s;renderStatus()};case "history_changed":scheduleHistory();case "stopped":if shuttingDown{NSApp.reply(toApplicationShouldTerminate:true)};default:break}}
+    func unavailable(_ text:String,phase:String="checking"){state=["phase":phase,"connected":false,"ui_failure":text];renderStatus();statusText.stringValue=text}
     func renderStatus(){
         menuTitle.stringValue="DJISMS \(phaseName)";menuNumber.stringValue=simNumber.isEmpty ? (connected ? "本机号码未提供":"本机号码待连接"):simNumber;menuNetwork.stringValue=connected ? "\(carrier) · \(lte) · 信号\(signal)":"连接后自动接收短信";menuDot.contentTintColor=statusColor;item.button?.toolTip="\(menuTitle.stringValue)\n\(menuNumber.stringValue)\n\(menuNetwork.stringValue)";item.button?.setAccessibilityLabel(item.button?.toolTip)
-        footerNumber.stringValue=simNumber.isEmpty ? "本机号码未提供":simNumber;statusText.stringValue=phase=="safety_stop" ? "接收已暂停，短信档案保留。请查看使用帮助。":phaseName;statusText.textColor=phase=="safety_stop" ? .systemRed:.secondaryLabelColor
-        deviceDot?.contentTintColor=statusColor;fields["connection"]?.stringValue=receiving ? "已连接，\(phaseName)":phaseName;fields["number"]?.stringValue=simNumber.isEmpty ? "未提供":simNumber;modifyButton?.isEnabled=connected && !simID.isEmpty
-        fields["sim"]?.stringValue=connected ? ((state["sim"] as? String ?? "").contains("READY") ? "已插入":"等待就绪"):"待连接";fields["carrier"]?.stringValue=carrier;fields["type"]?.stringValue=lte == "LTE" ? "4G (LTE)":lte;fields["signal"]?.stringValue=signal;fields["signal"]?.textColor=signal=="强" ? .systemGreen:.labelColor;fields["registration"]?.stringValue=lte=="LTE" ? "已注册（4G）":"待注册"
+        footerNumber.stringValue=simNumber.isEmpty ? "本机号码未提供":simNumber;statusText.stringValue=state["ui_failure"] as? String ?? (phase=="safety_stop" ? "接收已暂停，短信档案保留。请查看使用帮助。":phaseName);statusText.textColor=phase=="safety_stop" ? .systemRed:.secondaryLabelColor
+        deviceDot?.contentTintColor=statusColor;fields["connection"]?.stringValue=state["ui_failure"] as? String ?? (receiving ? "已连接，\(phaseName)":phaseName);fields["number"]?.stringValue=simNumber.isEmpty ? "未提供":simNumber;modifyButton?.isEnabled=connected && !simID.isEmpty
+        fields["sim"]?.stringValue=connected ? ((state["sim"] as? String ?? "").contains("READY") ? "已插入":"等待就绪"):(phase=="stopped" ? "服务未运行，未读取":"待连接");fields["carrier"]?.stringValue=carrier;fields["type"]?.stringValue=lte == "LTE" ? "4G (LTE)":lte;fields["signal"]?.stringValue=signal;fields["signal"]?.textColor=signal=="强" ? .systemGreen:.labelColor;fields["registration"]?.stringValue=lte=="LTE" ? "已注册（4G）":(phase=="stopped" ? "服务未运行，未核验":"待注册")
         let used=state["used"] as? Int ?? 0,capacity=state["capacity"] as? Int ?? 0;fields["cache"]?.stringValue=connected && capacity>0 ? "\(used) / \(capacity) 条（已用 \(used*100/capacity)%）":"待读取"
-        fields["recovery"]?.stringValue=(state["last_recovery"] as? String).map{dateText($0)} ?? "本次运行尚无恢复记录";fields["internet"]?.stringValue=connected && !(state["ipv4"] as? String ?? "").isEmpty ? "已连接 · \(state["ipv4"] as? String ?? "")":"等待连接";fields["internet"]?.textColor=connected ? .systemGreen:.secondaryLabelColor;fields["sample"]?.stringValue=dateText(state["status_observed"] as? String)
+        fields["recovery"]?.stringValue=(state["last_recovery"] as? String).map{dateText($0)} ?? "本次运行尚无恢复记录";fields["internet"]?.stringValue=connected && !(state["ipv4"] as? String ?? "").isEmpty ? "已连接 · \(state["ipv4"] as? String ?? "")":(phase=="stopped" ? "服务未运行，未核验":"等待连接");fields["internet"]?.textColor=connected ? .systemGreen:.secondaryLabelColor;fields["sample"]?.stringValue=dateText(state["status_observed"] as? String)
         notificationButton?.state=notifications ? .on:.off;purgeButton?.state=autoPurge ? .on:.off;notificationButton?.isEnabled=client.isReady;purgeButton?.isEnabled=client.isReady;soundButton?.state=sound ? .on:.off;permissionLabel?.stringValue=permissionGranted ? "系统通知已允许":"系统通知尚未允许"
         recentItem.title="查看最新短信\(unreadCount>0 ? "（\(unreadCount)）":"")"
         if let error=store.error,!errorShown{errorShown=true;alert("界面偏好",error)}
@@ -171,7 +183,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     @objc func closeDetail(){detailWindow?.close();showWindow()}
     @objc func copyDetail(_ sender:NSPopUpButton){guard let m=currentMessage else{return};let text=sender.indexOfSelectedItem==1 ? m.sender:m.body;NSPasteboard.general.clearContents();NSPasteboard.general.setString(text,forType:.string)}
     @objc func editNumber(){guard connected,!simID.isEmpty else{return};let id=simID;let panel=NSAlert();panel.messageText="修改本机显示号码";panel.informativeText="只修改这张 SIM 在 DJISMS 中的显示号码。此前短信的接收号码记录保持不变。";let input=NSTextField(string:simNumber);input.frame=NSRect(x:0,y:0,width:280,height:26);input.placeholderString="例如 +86 138 1234 5678";panel.accessoryView=input;panel.addButton(withTitle:"保存");panel.addButton(withTitle:"取消");panel.beginSheetModal(for:window){[weak self] result in guard let self=self,result == .alertFirstButtonReturn else{return};let v=input.stringValue.trimmingCharacters(in:.whitespacesAndNewlines);guard !v.isEmpty,v.count<=32,v.unicodeScalars.allSatisfy({CharacterSet(charactersIn:"+0123456789 -()").contains($0)}) else{self.alert("号码格式不正确","请填写不超过 32 个字符的电话号码。");return};self.store.data.numbers[id]=v;self.store.save();self.renderStatus()}}
-    @objc func refreshDevice(){poll()}
+    @objc func refreshDevice(){if !client.isRunning{startReceiver()}else{poll()}}
     @objc func preferencesChanged(){guard client.isReady else{return};let n=notificationButton?.state == .on,p=purgeButton?.state == .on;notificationButton?.isEnabled=false;purgeButton?.isEnabled=false;client.request("preferences",["preferences":["notifications":n,"auto_purge":p]]){[weak self] r in if r["error"] != nil{self?.alert("设置未保存","接收服务暂未确认设置，请稍后再试。")};self?.poll()};if n{checkPermission(request:true)}}
     @objc func soundChanged(_ sender:NSButton){sound=sender.state == .on;store.data.sound=sound;store.save()}
     @objc func loginChanged(_ sender:NSButton){do{if sender.state == .on{try SMAppService.mainApp.register()}else{try SMAppService.mainApp.unregister()}}catch{sender.state=SMAppService.mainApp.status == .enabled ? .on:.off;alert("登录启动未能设置","请在系统设置的登录项中允许 DJISMS，或稍后再试。")}}

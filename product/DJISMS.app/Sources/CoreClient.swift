@@ -9,10 +9,13 @@ final class CoreClient {
     private var callbacks: [String: ([String: Any]) -> Void] = [:]
     var event: (([String: Any]) -> Void)?
     var exited: (() -> Void)?
+    private(set) var lastFailure: String?
     private(set) var isReady = false
     var isRunning: Bool { process?.isRunning == true }
+    private let executableOverride: URL?
+    init(executable: URL? = nil) { executableOverride = executable }
     func launch() throws {
-        guard let executable = Bundle.main.url(forAuxiliaryExecutable: "djisms-core") ?? Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/djisms-core") as URL? else {
+        guard let executable = executableOverride ?? Bundle.main.url(forAuxiliaryExecutable: "djisms-core") ?? Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/djisms-core") as URL? else {
             throw NSError(domain: "DJISMS", code: 1, userInfo: [NSLocalizedDescriptionKey: "缺少核心组件"])
         }
         let child = Process()
@@ -23,20 +26,30 @@ final class CoreClient {
         // Never inherit a developer path or a shell. The helper resolves the
         // current user's Application Support directory itself.
         child.environment = ["HOME": FileManager.default.homeDirectoryForCurrentUser.path, "PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "LANG": "en_US.UTF-8"]
-        output.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            DispatchQueue.main.async { self?.consume(data) }
-        }
         errors.fileHandleForReading.readabilityHandler = { handle in _ = handle.availableData }
-        child.terminationHandler = { [weak self] _ in DispatchQueue.main.async {
-            guard let self = self else { return }
-            self.isReady = false
-            let pending = self.callbacks; self.callbacks.removeAll()
-            for callback in pending.values { callback(["error": "核心服务已停止"]) }
-            self.exited?()
-        } }
         try child.run()
         process = child
+        // One reader delivers all frames before EOF/exit. A fast startup failure
+        // must not lose its fatal frame to Process.terminationHandler ordering.
+        let reader = output.fileHandleForReading
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            while true {
+                let data = reader.availableData
+                if data.isEmpty { break }
+                DispatchQueue.main.async { [weak self] in self?.consume(data) }
+            }
+            child.waitUntilExit()
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.isReady = false
+                if self.lastFailure == nil && child.terminationStatus != 0 {
+                    self.lastFailure = "核心服务退出（代码 \(child.terminationStatus)）。"
+                }
+                let pending = self.callbacks; self.callbacks.removeAll()
+                for callback in pending.values { callback(["error": self.lastFailure ?? "核心服务已停止"]) }
+                self.exited?()
+            }
+        }
     }
     private func consume(_ bytes: Data) {
         if bytes.isEmpty { return }
@@ -53,6 +66,7 @@ final class CoreClient {
                 event?(["event": "fatal", "error": "核心协议不兼容"])
                 continue
             }
+            if value["event"] as? String == "fatal" { lastFailure = value["error"] as? String }
             if value["event"] as? String == "hello" { isReady = true }
             if let id = value["id"] as? String, let callback = callbacks.removeValue(forKey: id) { callback(value) }
             else { event?(value) }
