@@ -26,7 +26,9 @@ final class CoreClient {
         // Never inherit a developer path or a shell. The helper resolves the
         // current user's Application Support directory itself.
         child.environment = ["HOME": FileManager.default.homeDirectoryForCurrentUser.path, "PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "LANG": "en_US.UTF-8"]
-        errors.fileHandleForReading.readabilityHandler = { handle in _ = handle.availableData }
+        errors.fileHandleForReading.readabilityHandler = { handle in
+            if handle.availableData.isEmpty { handle.readabilityHandler = nil }
+        }
         try child.run()
         process = child
         // One reader delivers all frames before EOF/exit. A fast startup failure
