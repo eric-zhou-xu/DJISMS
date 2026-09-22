@@ -4,6 +4,10 @@ import ServiceManagement
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate, UNUserNotificationCenterDelegate {
     var client=CoreClient()
+    var storageBusy=false,storageChecked=false
+    var pendingStorageLaunch:(()->Void)?
+    var simSnapshot:[String:Any]?
+    var simPanel:SIMStoragePanel?
     let store:UIStore
     init(store:UIStore=UIStore()){self.store=store;super.init()}
     var window:NSWindow!, item:NSStatusItem!, sidebar:NSVisualEffectView!, content=NSView()
@@ -38,13 +42,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         checkPermission(request:true)
     }
     func startReceiver(){
-        guard !shuttingDown,!client.isRunning else{return}
+        guard !shuttingDown,!client.isRunning,!storageBusy else{return}
+        if !storageChecked {storageBusy=true;unavailable("正在核验 SIM 存储操作状态…",phase:"starting");SIMHelper.run(["action":"check"]){[weak self] v in guard let self=self else{return};self.storageBusy=false;self.storageChecked=v["restored"] as? Bool==true;if self.storageChecked{self.startReceiver()}else{self.unavailable(v["error"] as? String ?? "SIM 存储状态不确定",phase:"stopped")}};return}
         timer?.invalidate();polling=false
         client=CoreClient()
         client.event={ [weak self] in self?.handle($0) }
         client.exited={ [weak self] in
             guard let self=self else{return}
             self.timer?.invalidate();self.polling=false
+            if let launch=self.pendingStorageLaunch{self.pendingStorageLaunch=nil;launch();return}
             self.unavailable(self.client.lastFailure ?? "核心服务已停止。点击刷新状态重新启动并核验档案。",phase:"stopped")
             if self.shuttingDown{NSApp.reply(toApplicationShouldTerminate:true)}
         }
@@ -105,15 +111,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         let head=stack([icon("cellularbars",size:36),stack([title,stack([dot,desc],vertical:false,spacing:6)],spacing:7),button("刷新状态",#selector(refreshDevice))],vertical:false,spacing:14)
         let separator=NSBox();separator.boxType = .separator
         let rows=NSGridView();rows.rowSpacing=14;rows.columnSpacing=14;rows.xPlacement = .leading;rows.yPlacement = .center
-        for (key,name) in [("number","本机号码"),("sim","SIM 状态"),("carrier","运营商"),("type","网络类型"),("signal","信号强度"),("registration","网络状态"),("cache","短信缓存"),("recovery","最近恢复"),("internet","Mac 4G"),("sample","状态更新")]{
+        for (key,name) in [("number","本机号码"),("sim","SIM 状态"),("carrier","运营商"),("type","网络类型"),("signal","信号强度"),("registration","网络状态"),("cache","4G模块短信存储（ME）"),("smstorage","SIM短信存储（SM）"),("recovery","最近恢复"),("internet","Mac 4G"),("sample","状态更新")]{
             let value=label("待读取",key=="number" ? 16:13,key=="number" ? .semibold:.regular);fields[key]=value
             if key=="number"{let b=button("修改",#selector(editNumber));modifyButton=b;b.setContentHuggingPriority(.required,for:.horizontal);value.setContentHuggingPriority(.defaultLow,for:.horizontal);rows.addRow(with:[label(name,13,.regular,.secondaryLabelColor),stack([value,b],vertical:false,spacing:12)])}
             else{rows.addRow(with:[label(name,13,.regular,.secondaryLabelColor),value])}
             value.setContentCompressionResistancePriority(.defaultLow,for:.horizontal)
         }
         let foot=NSTextField(wrappingLabelWithString:"号码来自 SIM。修改只更新本机显示，不会更改 SIM。历史短信保留接收时的号码记录。");foot.font = .systemFont(ofSize:11);foot.textColor = .secondaryLabelColor
-        rows.column(at:0).width = 76
-        let v=stack([head,separator,rows,foot],spacing:17);pin(v,card,18);head.widthAnchor.constraint(equalTo:v.widthAnchor).isActive=true;head.views[1].setContentHuggingPriority(.defaultLow,for:.horizontal);rows.widthAnchor.constraint(equalTo:v.widthAnchor).isActive=true;rows.column(at:1).xPlacement = .fill;separator.widthAnchor.constraint(equalTo:v.widthAnchor).isActive=true;foot.widthAnchor.constraint(equalTo:v.widthAnchor).isActive=true
+        rows.column(at:0).width = 150
+        let v=stack([head,separator,rows,button("查看与管理 SIM 短信…",#selector(showSIMStorage)),foot],spacing:17);pin(v,card,18);head.widthAnchor.constraint(equalTo:v.widthAnchor).isActive=true;head.views[1].setContentHuggingPriority(.defaultLow,for:.horizontal);rows.widthAnchor.constraint(equalTo:v.widthAnchor).isActive=true;rows.column(at:1).xPlacement = .fill;separator.widthAnchor.constraint(equalTo:v.widthAnchor).isActive=true;foot.widthAnchor.constraint(equalTo:v.widthAnchor).isActive=true
     }
     func checkbox(_ title:String,_ state:Bool,_ action:Selector)->NSButton{let b=NSButton(checkboxWithTitle:title,target:self,action:action);b.state=state ? .on:.off;b.font = .systemFont(ofSize:13);return b}
     func buildSettings(){
@@ -122,7 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         let notification=checkbox("收到新短信时显示系统通知",notifications,#selector(preferencesChanged));notificationButton=notification
         let soundToggle=checkbox("播放提示音",sound,#selector(soundChanged(_:)));soundButton=soundToggle
         let permanent=checkbox("永久保存在这台 Mac（不可关闭）",true,#selector(noop));permanent.isEnabled=false
-        let purge=checkbox("保存并核验后自动清理模块副本",autoPurge,#selector(preferencesChanged));purgeButton=purge
+        let purge=checkbox("保存并核验后自动清理模块（ME）副本",autoPurge,#selector(preferencesChanged));purgeButton=purge
         let grid=NSGridView();grid.rowSpacing=16;grid.columnSpacing=20;grid.xPlacement = .leading;grid.yPlacement = .top
         grid.addRow(with:[label("启动",13,.medium),login]);grid.addRow(with:[label("通知",13,.medium),stack([notification,soundToggle],spacing:8)]);grid.addRow(with:[label("短信",13,.medium),stack([permanent,purge],spacing:8)])
         let appearance=NSPopUpButton();appearance.addItems(withTitles:["跟随系统","浅色","深色"]);appearance.selectItem(at:["system","light","dark"].firstIndex(of:store.data.appearance) ?? 0);appearance.target=self;appearance.action=#selector(appearanceChanged(_:));appearance.setAccessibilityLabel("外观");grid.addRow(with:[label("外观",13,.medium),appearance])
@@ -144,7 +150,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         footerNumber.stringValue=simNumber.isEmpty ? "本机号码未提供":simNumber;statusText.stringValue=state["ui_failure"] as? String ?? (phase=="safety_stop" ? "接收已暂停，短信档案保留。请查看使用帮助。":phaseName);statusText.textColor=phase=="safety_stop" ? .systemRed:.secondaryLabelColor
         deviceDot?.contentTintColor=statusColor;fields["connection"]?.stringValue=state["ui_failure"] as? String ?? (receiving ? "已连接，\(phaseName)":phaseName);fields["number"]?.stringValue=simNumber.isEmpty ? "未提供":simNumber;modifyButton?.isEnabled=connected && !simID.isEmpty
         fields["sim"]?.stringValue=connected ? ((state["sim"] as? String ?? "").contains("READY") ? "已插入":"等待就绪"):(phase=="stopped" ? "服务未运行，未读取":"待连接");fields["carrier"]?.stringValue=carrier;fields["type"]?.stringValue=lte == "LTE" ? "4G (LTE)":lte;fields["signal"]?.stringValue=signal;fields["signal"]?.textColor=signal=="强" ? .systemGreen:.labelColor;fields["registration"]?.stringValue=lte=="LTE" ? "已注册（4G）":(phase=="stopped" ? "服务未运行，未核验":"待注册")
-        let used=state["used"] as? Int ?? 0,capacity=state["capacity"] as? Int ?? 0;fields["cache"]?.stringValue=connected && capacity>0 ? "\(used) / \(capacity) 条（已用 \(used*100/capacity)%）":"待读取"
+        let used=state["used"] as? Int ?? 0,capacity=state["capacity"] as? Int ?? 0;fields["cache"]?.stringValue=connected && capacity>0 ? storageText(["used":used,"total":capacity]):"待读取"
+        if let snap=simSnapshot,snap["sim_id"] as? String==state["sim_id"] as? String {fields["smstorage"]?.stringValue=storageText(snap["sm"] as? [String:Any])+"（上次查询）"}else{fields["smstorage"]?.stringValue="尚未读取 · 点击 SIM 管理查询"}
         fields["recovery"]?.stringValue=(state["last_recovery"] as? String).map{dateText($0)} ?? "本次运行尚无恢复记录";fields["internet"]?.stringValue=connected && !(state["ipv4"] as? String ?? "").isEmpty ? "已连接 · \(state["ipv4"] as? String ?? "")":(phase=="stopped" ? "服务未运行，未核验":"等待连接");fields["internet"]?.textColor=connected ? .systemGreen:.secondaryLabelColor;fields["sample"]?.stringValue=dateText(state["status_observed"] as? String)
         notificationButton?.state=notifications ? .on:.off;purgeButton?.state=autoPurge ? .on:.off;notificationButton?.isEnabled=client.isReady;purgeButton?.isEnabled=client.isReady;soundButton?.state=sound ? .on:.off;permissionLabel?.stringValue=permissionGranted ? "系统通知已允许":"系统通知尚未允许"
         recentItem.title="查看最新短信\(unreadCount>0 ? "（\(unreadCount)）":"")"
@@ -206,7 +213,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     @objc func help(){alert("DJISMS 使用帮助","连接 DJI 4G 模块后自动接收短信。\n\n所有短信永久保存在这台 Mac。清理模块副本前会完成保存与核验。关闭窗口仍接收，退出应用后停止。\n\n显示号码可在设备状态中修改；历史短信保留原接收记录。旧档案没有记录接收卡时会显示“未记录”。\n\n连接中断或 Mac 唤醒后会自动恢复。如果出现“接收已暂停”，请保留档案，退出后重新打开；若仍暂停，请联系支持进行检查。\n\n仅接收短信，不提供发送或回复。")}
     func alert(_ title:String,_ message:String){let a=NSAlert();a.messageText=title;a.informativeText=message;a.addButton(withTitle:"好");if let w=window,w.attachedSheet==nil{a.beginSheetModal(for:w)}else{a.runModal()}}
     @objc func quit(){NSApp.terminate(nil)}
-    func applicationShouldTerminate(_ sender:NSApplication)->NSApplication.TerminateReply{if !client.isRunning{return .terminateNow};if shuttingDown{return .terminateLater};shuttingDown=true;timer?.invalidate();statusText.stringValue="正在安全停止接收…";client.request("shutdown");return .terminateLater}
+    func applicationShouldTerminate(_ sender:NSApplication)->NSApplication.TerminateReply{if storageBusy{alert("正在完成 SIM 操作","请等待存储恢复及审计完成后退出。");return .terminateCancel};if !client.isRunning{return .terminateNow};if shuttingDown{return .terminateLater};shuttingDown=true;timer?.invalidate();statusText.stringValue="正在安全停止接收…";client.request("shutdown");return .terminateLater}
 }
 let app=NSApplication.shared
 let delegate=AppDelegate()
