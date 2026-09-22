@@ -1,5 +1,15 @@
 import AppKit
 
+var localSMSBackupURL:URL { FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/DJISMS",isDirectory:true) }
+struct SIMBackupSchedule {
+    private var attempted=Set<String>()
+    mutating func claim(phase:String,sim:String,busy:Bool)->Bool {
+        guard phase=="ready",!sim.isEmpty,!busy,!attempted.contains(sim) else{return false}
+        attempted.insert(sim);return true
+    }
+}
+
+
 struct SIMRecord {
     let index:Int, status:Int
     let sender:String, time:String, body:String, receipt:String, hash:String
@@ -30,10 +40,10 @@ final class SIMStoragePanel:NSWindowController,NSTableViewDataSource,NSTableView
     init(){
         let w=NSWindow(contentRect:NSRect(x:0,y:0,width:820,height:540),styleMask:[.titled,.closable,.resizable],backing:.buffered,defer:false);super.init(window:w);w.title="SIM 短信管理（SM）";w.isReleasedWhenClosed=false;w.minSize=NSSize(width:700,height:430)
         let root=NSView();w.contentView=root
-        read.title="读取 SIM 短信并归档";read.target=self;read.action=#selector(refresh);read.bezelStyle = .rounded
+        read.title="备份 SIM 短信到本地";read.target=self;read.action=#selector(refresh);read.bezelStyle = .rounded
         delete.title="删除所选 SIM 短信…";delete.target=self;delete.action=#selector(prepareDelete);delete.bezelStyle = .rounded;delete.isEnabled=false
         let buttons=stack([read,delete],vertical:false,spacing:12);let scroll=NSScrollView();scroll.hasVerticalScroller=true;scroll.documentView=table;table.delegate=self;table.dataSource=self;table.allowsMultipleSelection=true;table.rowHeight=96;table.target=self;table.doubleAction=#selector(showRecord);table.headerView=nil;table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle;table.addTableColumn(NSTableColumn(identifier:NSUserInterfaceItemIdentifier("sim")));table.setAccessibilityLabel("SIM 实际短信列表，支持多选")
-        let foot=NSTextField(wrappingLabelWithString:"仅显示本次查询实际位于 SM 的记录。按住 Command/Shift 多选。删除前会生成预览并再次要求确认；仅精确删除所选 index，不影响 Mac 历史原件。")
+        let foot=NSTextField(wrappingLabelWithString:"读取后自动备份到与模块短信相同的本地短信列表，按时间查看。此处仅显示 SIM 当前记录。按住 Command/Shift 多选。删除前会生成预览并再次要求确认；仅精确删除所选 index，不影响 Mac 历史原件。")
         let v=stack([status,buttons,scroll,foot],spacing:12);pin(v,root,18);scroll.heightAnchor.constraint(greaterThanOrEqualToConstant:260).isActive=true;scroll.widthAnchor.constraint(equalTo:v.widthAnchor).isActive=true;status.widthAnchor.constraint(equalTo:v.widthAnchor).isActive=true;foot.widthAnchor.constraint(equalTo:v.widthAnchor).isActive=true
     }
     required init?(coder:NSCoder){fatalError()}
@@ -55,6 +65,15 @@ final class SIMStoragePanel:NSWindowController,NSTableViewDataSource,NSTableView
     func tableViewSelectionDidChange(_ notification:Notification){delete.isEnabled=read.isEnabled && !table.selectedRowIndexes.isEmpty}
 }
 extension AppDelegate {
+    func backupSIMIfNeeded(){
+        guard client.isReady,!shuttingDown,simBackupSchedule.claim(phase:state["phase"] as? String ?? "",sim:state["sim_id"] as? String ?? "",busy:storageBusy) else{return}
+        performSIM(["action":"inspect"]){[weak self] value in
+            guard let self=self else{return}
+            self.simPanel?.load(value)
+            if let error=value["error"] as? String,!error.isEmpty {self.alert("SIM 短信尚未完成备份",error+"\n原始档案保留；不会自动重试删除。可在 SIM 管理中查看。")}
+        }
+    }
+
     @objc func showSIMStorage(){if simPanel==nil{let p=SIMStoragePanel();p.perform={ [weak self] request,done in self?.performSIM(request,completion:done)};simPanel=p};simPanel?.showWindow(nil);simPanel?.window?.makeKeyAndOrderFront(nil)}
     func performSIM(_ request:[String:Any],completion:@escaping([String:Any])->Void){
         guard !storageBusy,!shuttingDown else{completion(["error":"接收/存储操作正在结束，请稍后重试。"]);return};storageBusy=true;timer?.invalidate()
