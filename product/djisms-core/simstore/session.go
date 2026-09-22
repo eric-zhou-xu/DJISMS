@@ -103,7 +103,13 @@ func (s *session) query(parent context.Context, c Command) (Response, error) {
 			if e != nil {
 				return r, e
 			}
-			return r, s.save("response", r)
+			if e = s.save("response", r); e != nil {
+				return r, e
+			}
+			if r.Error != "" {
+				return r, fmt.Errorf("device rejected optional SIM command: %s", r.Error)
+			}
+			return r, nil
 		}
 	}
 	return Response{}, errors.New("bounded query exhausted")

@@ -1,14 +1,6 @@
 import AppKit
 
 var localSMSBackupURL:URL { FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/DJISMS",isDirectory:true) }
-struct SIMBackupSchedule {
-    private var attempted=Set<String>()
-    mutating func claim(phase:String,sim:String,busy:Bool)->Bool {
-        guard phase=="ready",!sim.isEmpty,!busy,!attempted.contains(sim) else{return false}
-        attempted.insert(sim);return true
-    }
-}
-
 
 struct SIMRecord {
     let index:Int, status:Int
@@ -65,19 +57,13 @@ final class SIMStoragePanel:NSWindowController,NSTableViewDataSource,NSTableView
     func tableViewSelectionDidChange(_ notification:Notification){delete.isEnabled=read.isEnabled && !table.selectedRowIndexes.isEmpty}
 }
 extension AppDelegate {
-    func backupSIMIfNeeded(){
-        guard client.isReady,!shuttingDown,simBackupSchedule.claim(phase:state["phase"] as? String ?? "",sim:state["sim_id"] as? String ?? "",busy:storageBusy) else{return}
-        performSIM(["action":"inspect"]){[weak self] value in
-            guard let self=self else{return}
-            self.simPanel?.load(value)
-            if let error=value["error"] as? String,!error.isEmpty {self.alert("SIM 短信尚未完成备份",error+"\n原始档案保留；不会自动重试删除。可在 SIM 管理中查看。")}
-        }
-    }
-
     @objc func showSIMStorage(){if simPanel==nil{let p=SIMStoragePanel();p.perform={ [weak self] request,done in self?.performSIM(request,completion:done)};simPanel=p};simPanel?.showWindow(nil);simPanel?.window?.makeKeyAndOrderFront(nil)}
     func performSIM(_ request:[String:Any],completion:@escaping([String:Any])->Void){
         guard !storageBusy,!shuttingDown else{completion(["error":"接收/存储操作正在结束，请稍后重试。"]);return};storageBusy=true;timer?.invalidate()
-        let launch={ [weak self] in guard let self=self else{return};SIMHelper.run(request){[weak self] value in guard let self=self else{return};self.storageBusy=false;self.storageChecked=value["restored"] as? Bool==true;if self.storageChecked{if value["sm"] as? [String:Any] != nil{self.simSnapshot=value};self.startReceiver()}else{self.unavailable(value["error"] as? String ?? "SM 配置未能恢复，接收保持停止。",phase:"stopped")};completion(value)}}
+        let launch={ [weak self] in guard let self=self else{return};self.runSIM(request){[weak self] value in guard let self=self else{return};self.storageBusy=false;self.simFeatureFailure=value["error"] as? String
+                if value["restored"] as? Bool==true,value["sm"] as? [String:Any] != nil{self.simSnapshot=value}
+                // Core independently checks durable integrity/selection hazards. Optional helper availability never gates Core startup.
+                self.startReceiver();completion(value)}}
         if client.isRunning{pendingStorageLaunch=launch;client.request("shutdown")}else{launch()}
     }
 }

@@ -20,6 +20,7 @@ import (
 )
 
 type fakeSM struct {
+	reject                               uint8
 	sms                                  map[int]smsreceive.RawMessage
 	mem                                  string
 	pending                              []byte
@@ -36,6 +37,10 @@ func (f *fakeSM) write(c Command, _ time.Duration) error {
 	w, e := c.wire()
 	if e != nil {
 		return e
+	}
+	if f.reject == c.Kind {
+		f.pending = []byte(w + "\r\r\nERROR\r\n")
+		return nil
 	}
 	body := ""
 	switch c.Kind {
@@ -292,5 +297,25 @@ func TestDirectDuringSMIsArchivedAndNotificationQueued(t *testing.T) {
 	done, e := s.EventsOfKind("direct_handoff_complete")
 	if e != nil || len(done) != 1 {
 		t.Fatal(done, e)
+	}
+}
+
+func TestTargetedOptionalQueryRejectionRestoresIsolation(t *testing.T) {
+	for _, k := range []uint8{10, 5} {
+		s, f := fixtureSM(t)
+		f.reject = k
+		r, e := run(context.Background(), s, Request{Action: "inspect"}, f.opener)
+		if e == nil {
+			t.Fatal("rejection hidden")
+		}
+		if Pending(s) != nil {
+			t.Fatal("classified optional error left unsafe session")
+		}
+		if k == 5 && !r.Restored {
+			t.Fatal("SM not restored")
+		}
+		if f.mem != "ME" || deletes(f) != 0 {
+			t.Fatal("core contract changed")
+		}
 	}
 }

@@ -14,7 +14,9 @@ import (
 	"github.com/iniwex5/vohive/product/djisms-core/discovery"
 	"github.com/iniwex5/vohive/product/djisms-core/host"
 	"github.com/iniwex5/vohive/product/djisms-core/receive"
+	"github.com/iniwex5/vohive/product/djisms-core/shutdownproof"
 	"github.com/iniwex5/vohive/product/djisms-core/status"
+	"github.com/iniwex5/vohive/product/djisms-core/storageguard"
 	"sort"
 	"sync"
 	"time"
@@ -156,7 +158,16 @@ func (c *Core) stop(e error) {
 		s.Detail = "安全停止：" + e.Error() + "。已保存的原始短信保留；请先核查，程序不会重试删除。"
 	})
 }
+
+type safeStatusCancellation struct{}
+
+func (safeStatusCancellation) Error() string { return "closed zero-OUT status cancellation" }
 func (c *Core) run(ctx context.Context) {
+	if e := storageguard.Check(c.Store); e != nil {
+		c.update(func(s *State) { s.Phase = "safety_stop"; s.Detail = e.Error() })
+		return
+	}
+
 	if e := c.settleDirectTransports(); e != nil {
 		c.stop(e)
 		return
@@ -294,8 +305,16 @@ func (c *Core) run(ctx context.Context) {
 					s.Detail = "模块短信接口正被其他程序使用；关闭占用它的程序后会自动重新检查"
 				})
 			} else {
+				if ctx.Err() != nil {
+					return
+				}
 				e = c.connected(ctx, d)
 				if e != nil {
+					var canceled safeStatusCancellation
+					if ctx.Err() != nil && errors.As(e, &canceled) {
+						return
+					}
+
 					var pending connectionPending
 					if errors.As(e, &pending) {
 						if e = c.trySleepRecovery(ctx, d, time.Now()); e != nil {
@@ -381,6 +400,12 @@ func (c *Core) connected(ctx context.Context, d discovery.Device) error {
 		return errors.Join(operationErr, e)
 	}
 	if operationErr != nil {
+		if ctx.Err() == context.Canceled && shutdownproof.Plan(report) {
+			if e = c.Store.Event("status_cancelled_before_out", "", archive.M{"session": current.id, "closed": true, "zero_out": true, "zero_input": true}); e != nil {
+				return e
+			}
+			return safeStatusCancellation{}
+		}
 		return operationErr
 	}
 	c.update(func(s *State) {

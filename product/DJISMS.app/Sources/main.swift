@@ -4,8 +4,10 @@ import ServiceManagement
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate, UNUserNotificationCenterDelegate {
     var client=CoreClient()
+    var makeCoreClient:()->CoreClient = {CoreClient()}
+    var runSIM:([String:Any],@escaping([String:Any])->Void)->Void = {SIMHelper.run($0,completion:$1)}
     var storageBusy=false,storageChecked=false
-    var simBackupSchedule=SIMBackupSchedule()
+    var simFeatureFailure:String?
     var pendingStorageLaunch:(()->Void)?
     var simSnapshot:[String:Any]?
     var simPanel:SIMStoragePanel?
@@ -44,9 +46,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     }
     func startReceiver(){
         guard !shuttingDown,!client.isRunning,!storageBusy else{return}
-        if !storageChecked {storageBusy=true;unavailable("正在核验 SIM 存储操作状态…",phase:"starting");SIMHelper.run(["action":"check"]){[weak self] v in guard let self=self else{return};self.storageBusy=false;self.storageChecked=v["restored"] as? Bool==true;if self.storageChecked{self.startReceiver()}else{self.unavailable(v["error"] as? String ?? "SIM 存储状态不确定",phase:"stopped")}};return}
         timer?.invalidate();polling=false
-        client=CoreClient()
+        client=makeCoreClient()
         client.event={ [weak self] in self?.handle($0) }
         client.exited={ [weak self] in
             guard let self=self else{return}
@@ -120,7 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         }
         let foot=NSTextField(wrappingLabelWithString:"号码来自 SIM。修改只更新本机显示，不会更改 SIM。历史短信保留接收时的号码记录。");foot.font = .systemFont(ofSize:11);foot.textColor = .secondaryLabelColor
         rows.column(at:0).width = 150
-        let backup=NSTextField(wrappingLabelWithString:"本地备份路径：\(localSMSBackupURL.path)\n模块与 SIM 短信统一保存在本地短信列表。连接就绪后自动备份 SIM；不会自动删除 SIM 短信。");backup.font = .systemFont(ofSize:11);backup.textColor = .secondaryLabelColor;backup.isSelectable=true
+        let backup=NSTextField(wrappingLabelWithString:"本地备份路径：\(localSMSBackupURL.path)\n模块与 SIM 短信统一保存在本地短信列表。通过 SIM 管理手动备份；不会自动删除 SIM 短信。");backup.font = .systemFont(ofSize:11);backup.textColor = .secondaryLabelColor;backup.isSelectable=true
         let v=stack([head,separator,rows,button("备份与管理 SIM 短信…",#selector(showSIMStorage)),foot,backup],spacing:17);pin(v,card,18);head.widthAnchor.constraint(equalTo:v.widthAnchor).isActive=true;head.views[1].setContentHuggingPriority(.defaultLow,for:.horizontal);rows.widthAnchor.constraint(equalTo:v.widthAnchor).isActive=true;rows.column(at:1).xPlacement = .fill;separator.widthAnchor.constraint(equalTo:v.widthAnchor).isActive=true;foot.widthAnchor.constraint(equalTo:v.widthAnchor).isActive=true;backup.widthAnchor.constraint(equalTo:v.widthAnchor).isActive=true
     }
     func checkbox(_ title:String,_ state:Bool,_ action:Selector)->NSButton{let b=NSButton(checkboxWithTitle:title,target:self,action:action);b.state=state ? .on:.off;b.font = .systemFont(ofSize:13);return b}
@@ -144,7 +145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         let mark=NSImageView();mark.image=Bundle.main.url(forResource:"AppMark",withExtension:"png").flatMap{NSImage(contentsOf:$0)};mark.translatesAutoresizingMaskIntoConstraints=false;NSLayoutConstraint.activate([mark.widthAnchor.constraint(equalToConstant:64),mark.heightAnchor.constraint(equalToConstant:64)])
         let v=stack([mark,label("DJISMS",24,.bold),label("版本 1.0.0 · UI 候选",13),label("只接收短信 · 本地保存 · 简单可靠",13),label("© 2026 DJISMS. All rights reserved.",11,.regular,.secondaryLabelColor),label(build,10,.regular,.tertiaryLabelColor),button("使用帮助",#selector(help))],spacing:12);v.alignment = .centerX;v.translatesAutoresizingMaskIntoConstraints=false;content.addSubview(v);NSLayoutConstraint.activate([v.centerXAnchor.constraint(equalTo:content.centerXAnchor),v.centerYAnchor.constraint(equalTo:content.centerYAnchor),v.leadingAnchor.constraint(greaterThanOrEqualTo:content.leadingAnchor,constant:18),v.trailingAnchor.constraint(lessThanOrEqualTo:content.trailingAnchor,constant:-18)])
     }
-    func poll(){guard client.isReady,!shuttingDown,!polling else{return};polling=true;client.request("status"){[weak self] response in guard let self=self else{return};self.polling=false;if response["error"] != nil{self.unavailable("接收状态暂时无法确认，正在等待服务恢复。");return};guard let data=response["data"] as? [String:Any] else{return};if let s=data["state"] as? [String:Any]{self.state=s};if let p=data["preferences"] as? [String:Any]{self.notifications=p["notifications"] as? Bool ?? true;self.autoPurge=p["auto_purge"] as? Bool ?? true};self.renderStatus();self.fetchNotifications();self.backupSIMIfNeeded()}}
+    func poll(){guard client.isReady,!shuttingDown,!polling else{return};polling=true;client.request("status"){[weak self] response in guard let self=self else{return};self.polling=false;if response["error"] != nil{self.unavailable("接收状态暂时无法确认，正在等待服务恢复。");return};guard let data=response["data"] as? [String:Any] else{return};if let s=data["state"] as? [String:Any]{self.state=s};if let p=data["preferences"] as? [String:Any]{self.notifications=p["notifications"] as? Bool ?? true;self.autoPurge=p["auto_purge"] as? Bool ?? true};self.renderStatus();self.fetchNotifications()}}
     func handle(_ event:[String:Any]){if event["error"] != nil{unavailable(event["error"] as? String ?? "接收服务需要检查。",phase:"stopped");return};switch event["event"] as? String{case "initializing":unavailable("正在校验永久档案，完成后自动接收…",phase:"starting");case "hello":refreshHistory();poll();case "state":if let s=event["data"] as? [String:Any]{state=s;renderStatus()};case "history_changed":scheduleHistory();case "stopped":if shuttingDown{NSApp.reply(toApplicationShouldTerminate:true)};default:break}}
     func unavailable(_ text:String,phase:String="checking"){state=["phase":phase,"connected":false,"ui_failure":text];renderStatus();statusText.stringValue=text}
     func renderStatus(){
@@ -153,7 +154,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         deviceDot?.contentTintColor=statusColor;fields["connection"]?.stringValue=state["ui_failure"] as? String ?? (receiving ? "已连接，\(phaseName)":phaseName);fields["number"]?.stringValue=simNumber.isEmpty ? "未提供":simNumber;modifyButton?.isEnabled=connected && !simID.isEmpty
         fields["sim"]?.stringValue=connected ? ((state["sim"] as? String ?? "").contains("READY") ? "已插入":"等待就绪"):(phase=="stopped" ? "服务未运行，未读取":"待连接");fields["carrier"]?.stringValue=carrier;fields["type"]?.stringValue=lte == "LTE" ? "4G (LTE)":lte;fields["signal"]?.stringValue=signal;fields["signal"]?.textColor=signal=="强" ? .systemGreen:.labelColor;fields["registration"]?.stringValue=lte=="LTE" ? "已注册（4G）":(phase=="stopped" ? "服务未运行，未核验":"待注册")
         let used=state["used"] as? Int ?? 0,capacity=state["capacity"] as? Int ?? 0;fields["cache"]?.stringValue=connected && capacity>0 ? storageText(["used":used,"total":capacity]):"待读取"
-        if let snap=simSnapshot,snap["sim_id"] as? String==state["sim_id"] as? String {fields["smstorage"]?.stringValue=storageText(snap["sm"] as? [String:Any])+"（上次查询）"}else{fields["smstorage"]?.stringValue="尚未读取 · 点击 SIM 管理查询"}
+        if let failure=simFeatureFailure {fields["smstorage"]?.stringValue="不可用 · \(failure)"}else if let snap=simSnapshot,snap["sim_id"] as? String==state["sim_id"] as? String {fields["smstorage"]?.stringValue=storageText(snap["sm"] as? [String:Any])+"（上次查询）"}else{fields["smstorage"]?.stringValue="尚未读取 · 点击 SIM 管理查询"}
         fields["recovery"]?.stringValue=(state["last_recovery"] as? String).map{dateText($0)} ?? "本次运行尚无恢复记录";fields["internet"]?.stringValue=connected && !(state["ipv4"] as? String ?? "").isEmpty ? "已连接 · \(state["ipv4"] as? String ?? "")":(phase=="stopped" ? "服务未运行，未核验":"等待连接");fields["internet"]?.textColor=connected ? .systemGreen:.secondaryLabelColor;fields["sample"]?.stringValue=dateText(state["status_observed"] as? String)
         notificationButton?.state=notifications ? .on:.off;purgeButton?.state=autoPurge ? .on:.off;notificationButton?.isEnabled=client.isReady;purgeButton?.isEnabled=client.isReady;soundButton?.state=sound ? .on:.off;permissionLabel?.stringValue=permissionGranted ? "系统通知已允许":"系统通知尚未允许"
         recentItem.title="查看最新短信\(unreadCount>0 ? "（\(unreadCount)）":"")"

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/iniwex5/vohive/product/djisms-core/shutdownproof"
 	"path/filepath"
 	"strings"
 
@@ -34,6 +35,9 @@ func stopFingerprint(stop archive.M) (string, error) {
 }
 
 func (c *Core) reviewedStop(stop archive.M) (bool, error) {
+	if yes, e := shutdownproof.Allowed(c.Store); yes || e != nil {
+		return yes, e
+	}
 	if yes, e := c.reviewedStatusStop(stop); yes || e != nil {
 		return yes, e
 	}

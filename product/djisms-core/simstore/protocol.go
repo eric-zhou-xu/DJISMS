@@ -69,6 +69,7 @@ type Direct struct {
 	ReportedStatus *int   `json:"reported_status"`
 }
 type Response struct {
+	Error    string                  `json:"terminal_error,omitempty"`
 	Command  Command                 `json:"command"`
 	Echo     bool                    `json:"echo"`
 	Done     bool                    `json:"done"`
@@ -209,7 +210,19 @@ func (p *framer) line(raw []byte, n int) error {
 	}
 	a := p.active
 	if s == "ERROR" || strings.HasPrefix(s, "+CMS ERROR:") || strings.HasPrefix(s, "+CME ERROR:") {
-		return errors.New("modem terminal error")
+		if s != "ERROR" {
+			v := strings.TrimSpace(strings.SplitN(s, ":", 2)[1])
+			n, e := strconv.Atoi(v)
+			if e != nil || n < 0 || n > 65535 {
+				return errors.New("unclassified modem error body")
+			}
+		}
+		if a == nil || !a.Echo || a.Done {
+			return errors.New("unattributed modem terminal error")
+		}
+		a.Done = true
+		a.Error = s
+		return nil
 	}
 	if strings.HasPrefix(s, "AT") {
 		if a == nil || a.Echo || a.Done {
@@ -311,6 +324,10 @@ func (p *framer) finish() (Response, error) {
 		return Response{}, errors.New("incomplete response")
 	}
 	a := *p.active
+	if a.Error != "" {
+		p.active = nil
+		return a, nil
+	}
 	if a.Command.Kind == 7 {
 		if len(a.Messages) != 1 || len(a.Lines) != 0 {
 			return a, errors.New("missing CMGR PDU")

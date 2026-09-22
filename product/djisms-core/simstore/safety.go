@@ -3,6 +3,7 @@ package simstore
 import (
 	"errors"
 	"github.com/iniwex5/vohive/product/djisms-core/archive"
+	"github.com/iniwex5/vohive/product/djisms-core/shutdownproof"
 )
 
 // This companion ships with the byte-identical accepted R8 Core. It cannot grant
@@ -11,6 +12,9 @@ const coreBuild = "20260922-v1-final-r8-01"
 const coreSource = "8b35d87af8cfdb7ff505666e81db7cacb733bba53e86b2c7d70268a05a0dcc5c"
 
 func baselineSafety(s *archive.Store) error {
+	if yes, e := shutdownproof.Allowed(s); yes || e != nil {
+		return e
+	}
 	stop, e := s.LatestEvent("core_safety_stop")
 	if e != nil || stop == nil {
 		return e
