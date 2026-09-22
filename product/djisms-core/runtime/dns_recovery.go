@@ -26,6 +26,10 @@ type DNSRecoveryReview struct {
 	Note            string `json:"operator_review"`
 }
 
+func sipEnabled(s string) bool {
+	return strings.Contains(s, "enabled") && !strings.Contains(s, "disabled")
+}
+
 func validCandidate(r DNSRecoveryReview) bool {
 	return r.BuildID == buildinfo.BuildID && r.SourceTree == buildinfo.SourceTree && r.BuildID != "unversioned-development" && len(r.SourceTree) == 64 && strings.Trim(r.SourceTree, "0123456789abcdef") == ""
 }
@@ -103,7 +107,7 @@ func (c *Core) AuthorizeDNSRecovery(ctx context.Context, r DNSRecoveryReview) er
 	if e = discovery.Validate(old.Device); e != nil {
 		return e
 	}
-	if !old.HTTPS || old.SIP != "enabled" {
+	if !old.HTTPS || !sipEnabled(old.SIP) {
 		return errors.New("historical host not verified")
 	}
 	ds, e := c.deps.snapshot()
@@ -146,7 +150,7 @@ func (c *Core) AuthorizeDNSRecovery(ctx context.Context, r DNSRecoveryReview) er
 	if e != nil {
 		return e
 	}
-	if before.SIP != "enabled" || after.SIP != "enabled" {
+	if !sipEnabled(before.SIP) || !sipEnabled(after.SIP) {
 		return errors.New("SIP not enabled")
 	}
 	if e = host.Compare(before, after); e != nil {

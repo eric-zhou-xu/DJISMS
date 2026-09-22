@@ -32,7 +32,7 @@ func dnsFixture(t *testing.T, mode string) (*Core, DNSRecoveryReview, discovery.
 			t.Fatal(e)
 		}
 	}
-	b, _ := archive.Canonical(host.Snapshot{Device: d, HTTPS: true, SIP: "enabled"})
+	b, _ := archive.Canonical(host.Snapshot{Device: d, HTTPS: true, SIP: "System Integrity Protection status: enabled."})
 	h, e := c.Store.SaveSource("session/previous/000001/host_after", b)
 	if e != nil {
 		t.Fatal(e)
@@ -84,7 +84,7 @@ func dnsFixture(t *testing.T, mode string) (*Core, DNSRecoveryReview, discovery.
 	fresh.RegistryID++
 	c.deps.snapshot = func() ([]discovery.Device, error) { return []discovery.Device{fresh}, nil }
 	c.deps.capture = func(_ context.Context, d discovery.Device) (host.Snapshot, error) {
-		return host.Snapshot{Device: d, HTTPS: true, SIP: "enabled"}, nil
+		return host.Snapshot{Device: d, HTTPS: true, SIP: "System Integrity Protection status: enabled."}, nil
 	}
 	return c, r, fresh
 }
