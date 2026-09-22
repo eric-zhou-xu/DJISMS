@@ -11,10 +11,10 @@ panel.load(sample);precondition(!panel.delete.isEnabled)
 var actions:[String]=[]
 panel.perform={req,done in actions.append(req["action"] as! String);if req["action"] as? String=="plan"{precondition((req["indices"] as! [Int])==[1,2]);done(["items":records,"plan":"synthetic-plan","restored":true])}else{precondition(req["confirmed"] as? Bool==true);done(["items":[],"restored":true])}}
 panel.table.selectRowIndexes(IndexSet([0,1]),byExtendingSelection:false)
-Timer.scheduledTimer(withTimeInterval:0.05,repeats:false){_ in app.stopModal(withCode:.alertFirstButtonReturn)}
+RunLoop.main.add(Timer(timeInterval:0.05,repeats:false){_ in app.stopModal(withCode:.alertFirstButtonReturn)},forMode:.modalPanel)
 panel.prepareDelete();precondition(actions==["plan"],"cancel executed delete")
 panel.load(sample);panel.table.selectRowIndexes(IndexSet([0,1]),byExtendingSelection:false)
-Timer.scheduledTimer(withTimeInterval:0.05,repeats:false){_ in app.stopModal(withCode:.alertSecondButtonReturn)}
+RunLoop.main.add(Timer(timeInterval:0.05,repeats:false){_ in app.stopModal(withCode:.alertSecondButtonReturn)},forMode:.modalPanel)
 panel.prepareDelete();precondition(actions==["plan","plan","delete"])
 var unsafe=records;unsafe[0]["archived"]=false;panel.load(["items":unsafe]);panel.table.selectRowIndexes(IndexSet(integer:0),byExtendingSelection:false);panel.prepareDelete();precondition(actions.count==3,"unarchived item reached helper")
 print("PASS: dynamic storage warnings; empty selection disabled; multi-select dry run; cancel sends no delete; explicit confirmation; archive uncertainty blocks before helper. Offline fixtures only.")
