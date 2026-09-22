@@ -157,6 +157,14 @@ func (c *Core) stop(e error) {
 	})
 }
 func (c *Core) run(ctx context.Context) {
+	if e := c.settleDirectTransports(); e != nil {
+		c.stop(e)
+		return
+	}
+	if e := c.settleStatusHandoffs(); e != nil {
+		c.stop(e)
+		return
+	}
 	stopped, e := c.Store.LatestEvent("core_safety_stop")
 	if e != nil {
 		c.stop(e)
@@ -175,6 +183,13 @@ func (c *Core) run(ctx context.Context) {
 			s.Phase = "safety_stop"
 			s.Detail = "上次安全停止尚待核查；自动接收及清理暂停。"
 		})
+		return
+	}
+	if id, e := c.pendingStatusSession(); e != nil {
+		c.stop(e)
+		return
+	} else if id != "" {
+		c.stop(errors.New("interrupted status request requires explicit continuation"))
 		return
 	}
 	summary, e := c.Store.Summary()
@@ -348,16 +363,25 @@ func (c *Core) connected(ctx context.Context, d discovery.Device) error {
 	if e = current.Save("host_before", before); e != nil {
 		return e
 	}
+	if e = c.Store.Event("status_session_opened", "", archive.M{"session": current.id, "build_id": buildinfo.BuildID, "source_tree": buildinfo.SourceTree}); e != nil {
+		return e
+	}
 	tr := c.deps.status(d)
 	if e = tr.Connect(ctx); e != nil {
 		return e
 	}
-	report, e := tr.ExecutePlan(ctx, func(r status.Report) error { return current.Save("status_query", r) })
-	if e != nil {
-		return e
-	}
+	report, operationErr := tr.ExecutePlan(ctx, current.saveStatus)
 	if e = current.Save("status_complete", report); e != nil {
-		return e
+		return errors.Join(operationErr, e)
+	}
+	if e = c.Store.Event("status_session_closed", "", archive.M{"session": current.id, "closed": report.CloseSucceeded, "complete": operationErr == nil}); e != nil {
+		return errors.Join(operationErr, e)
+	}
+	if e = c.Store.Event("status_handoff_audited", "", archive.M{"session": current.id}); e != nil {
+		return errors.Join(operationErr, e)
+	}
+	if operationErr != nil {
+		return operationErr
 	}
 	c.update(func(s *State) {
 		s.StatusObserved = time.Now().UTC().Format(time.RFC3339Nano)
@@ -389,6 +413,10 @@ func (c *Core) connected(ctx context.Context, d discovery.Device) error {
 		}
 		current = &session{core: c, device: d, id: nonce(), inventory: map[int]record{}}
 		listenCtx, cancel := context.WithCancel(ctx)
+		if e = current.openTransport("receive"); e != nil {
+			cancel()
+			return e
+		}
 		transport := c.deps.receive(d)
 		if e = transport.Connect(listenCtx); e != nil {
 			cancel()
@@ -402,6 +430,9 @@ func (c *Core) connected(ctx context.Context, d discovery.Device) error {
 		result, e := transport.Listen(listenCtx, receive.Config{KnownIndices: known, KnownPDUHashes: hashes, ExpectedUsed: len(known), Yield: current.shouldYield}, current)
 		cancel()
 		if e != nil {
+			if auditErr := c.Store.Event("transport_handoff_audited", "", archive.M{"session": current.id}); auditErr != nil {
+				return errors.Join(e, auditErr)
+			}
 			if result.Interrupted && result.Closed {
 				c.recoveryInventory = current.inventory
 				return idleInterruption{e}
@@ -413,6 +444,9 @@ func (c *Core) connected(ctx context.Context, d discovery.Device) error {
 			return errors.New("receive session did not reconcile")
 		}
 		if c.isPaused() {
+			if e = c.Store.Event("transport_handoff_audited", "", archive.M{"session": current.id}); e != nil {
+				return e
+			}
 			if e = current.Save("sleep_receive_closed", archive.M{"settings_reconciled": true, "closed": true, "host_check_deferred_until_wake": true}); e != nil {
 				return e
 			}
@@ -420,6 +454,9 @@ func (c *Core) connected(ctx context.Context, d discovery.Device) error {
 			return idleInterruption{errors.New(sleepIdleReason)}
 		}
 		if e = current.reconcile(context.WithoutCancel(ctx), before); e != nil {
+			return e
+		}
+		if e = c.Store.Event("transport_handoff_audited", "", archive.M{"session": current.id}); e != nil {
 			return e
 		}
 		if ctx.Err() != nil {
@@ -555,18 +592,8 @@ func (s *session) Direct(d receive.Direct) error {
 	if e := s.Save("direct_raw", d); e != nil {
 		return e
 	}
-	meta := archive.M{"device_key": "dji:2ca3:4006:0318:ecm-v1", "connection_id": s.id, "storage": nil, "index": nil, "received_at": d.ObservedUTC, "acquisition_kind": "direct", "original_metadata": d}
 	state, _ := s.core.Current()
-	meta["sim_id"], meta["sim_number"] = state.SIMID, state.SIMNumber
-	rid, e := s.core.Store.Ingest(fmt.Sprintf("product/%s/direct/%d", s.id, d.EventID), d.PDU, meta, nil)
-	if e != nil {
-		return e
-	}
-	if e = decoder.Process(s.core.Store, []string{rid}, true); e != nil {
-		return e
-	}
-	s.core.Publish("history_changed", nil)
-	return nil
+	return s.core.directTransportHandoff(s.id, d, archive.M{"sim_id": state.SIMID, "sim_number": state.SIMNumber})
 }
 func (s *session) Ready(used int) error {
 	if s.core.recoveryID != "" {

@@ -38,7 +38,7 @@ func (t *Transport) ExecutePlan(ctx context.Context, record func(Report) error) 
 	if record == nil {
 		return r, errors.New("durable evidence recorder is required")
 	}
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 	for q := Query(1); int(q) <= len(definitions); q++ {
 		a, e := t.execute(ctx, q, record)

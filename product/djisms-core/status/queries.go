@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -55,6 +56,9 @@ func validateResponse(q Query, lines []string) error {
 		return errors.New("missing or oversized response body")
 	}
 	if definitions[q-1].identity {
+		if len(lines) != 1 || !identityLine(definitions[q-1].command, lines[0]) {
+			return errors.New("unclassified identity response")
+		}
 		return nil
 	}
 	if len(lines) != 1 {
@@ -109,4 +113,23 @@ func validateResponse(q Query, lines []string) error {
 		return fmt.Errorf("unhandled query %d", q)
 	}
 	return nil
+}
+
+var auditedRevision = regexp.MustCompile(`^(QDC507|EG25)[A-Za-z0-9_.-]{1,96}$`)
+
+// Unprefixed identification replies need a known grammar: arbitrary printable
+// vendor URCs must not become manufacturer/model/revision values.
+func identityLine(command, text string) bool {
+	switch command {
+	case "AT+CGMI":
+		text = strings.TrimSpace(strings.TrimPrefix(text, "+CGMI:"))
+		return text == "Baiwang" || text == "Quectel"
+	case "AT+CGMM":
+		text = strings.TrimSpace(strings.TrimPrefix(text, "+CGMM:"))
+		return text == "QDC507" || text == "EG25-G"
+	case "AT+CGMR":
+		text = strings.TrimSpace(strings.TrimPrefix(text, "+CGMR:"))
+		return auditedRevision.MatchString(text)
+	}
+	return false
 }

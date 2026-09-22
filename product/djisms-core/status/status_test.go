@@ -183,10 +183,10 @@ func TestAmbiguityAndFailuresStopPlanWithoutRetry(t *testing.T) {
 	}
 }
 func TestRealPreFragmentNotErased(t *testing.T) {
-	f := &fakeBackend{inputs: []input{{data: "+"}, {data: "X"}, {data: " "}, {data: "tail"}, {data: "\r\nAT+CGMI\r\nQuectel\r\nOK\r\n"}}}
+	f := &fakeBackend{inputs: []input{{data: "+"}, {data: "X"}, {data: " "}, {data: "tail"}, {code: usbTransactionTimeout}}}
 	p := connect(t, f)
 	r, e := p.ExecutePlan(context.Background(), func(Report) error { return nil })
-	if e == nil || len(f.writes) != 1 || r.Queries[0].EchoMatched {
+	if e == nil || len(f.writes) != 0 || r.Queries[0].EchoMatched {
 		t.Fatal(e, r)
 	}
 	lossless(t, r.Queries[0])

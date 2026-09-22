@@ -8,6 +8,7 @@ import (
 	"github.com/iniwex5/vohive/product/djisms-core/discovery"
 	"github.com/iniwex5/vohive/product/djisms-core/host"
 	"github.com/iniwex5/vohive/product/djisms-core/purge"
+	"github.com/iniwex5/vohive/product/djisms-core/receive"
 	"time"
 )
 
@@ -52,11 +53,17 @@ func (c *Core) purgeOne(ctx context.Context, d discovery.Device, inventory map[i
 	if e = p.Save("purge_plan", cfg); e != nil {
 		return e
 	}
+	if e = p.openTransport("purge"); e != nil {
+		return e
+	}
 	tr := c.deps.purge(d)
 	if e = tr.Connect(ctx); e != nil {
 		return e
 	}
 	result, operationErr := tr.Purge(ctx, cfg, p)
+	if e = c.Store.Event("transport_handoff_audited", "", archive.M{"session": p.id}); e != nil {
+		return errors.Join(operationErr, e)
+	}
 	// Reconciliation never sends AT or retries any command, even after a fault.
 	hostErr := p.reconcile(context.WithoutCancel(ctx), before)
 	if operationErr == nil && hostErr == nil && result.DeleteConfirmed && result.Reconciled && result.Closed && p.intent {
@@ -141,4 +148,10 @@ func (p *purgeSession) Authorize(ctx context.Context, fresh purge.Predelete) err
 	}
 	p.intent = true
 	return nil
+}
+
+// Direct arrivals are archived without slot coordinates; they cannot expand
+// deletion eligibility or modify the expected stored inventory.
+func (p *purgeSession) DirectPurge(d purge.Direct) error {
+	return p.session.Direct(receive.Direct{EventID: d.EventID, ObservedUTC: d.ObservedUTC, Offset: d.Offset, Header: d.Header, HeaderHex: d.HeaderHex, TPDULength: d.TPDULength, PDU: d.PDU, PDULineHex: d.PDULineHex})
 }

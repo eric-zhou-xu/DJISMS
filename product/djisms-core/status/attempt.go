@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/iniwex5/vohive/product/djisms-core/atproto"
 	"sync/atomic"
 	"time"
 )
@@ -18,37 +19,53 @@ type ReadEvidence struct {
 	Error        string         `json:"error,omitempty"`
 }
 type Report struct {
-	ResponseLines              []string       `json:"response_lines"`
-	Policy                     string         `json:"unsolicited_policy"`
-	RequestID                  uint64         `json:"host_request_id"`
-	Interface                  int            `json:"interface"`
-	Command                    string         `json:"command"`
-	PlannedOutHex              string         `json:"planned_out_hex"`
-	SafeToSend                 bool           `json:"safe_to_send_query"`
-	ResponseEvidenceSufficient bool           `json:"forensic_evidence_sufficient"`
-	AttributionIssues          []string       `json:"attribution_issues"`
-	Outcome                    string         `json:"outcome"`
-	ObservedBoundaryClassified bool           `json:"observed_pre_write_boundary_classified"`
-	WriteAttempted             bool           `json:"write_attempted"`
-	WriteSucceeded             bool           `json:"write_succeeded"`
-	EchoMatched                bool           `json:"echo_matched"`
-	TerminalOK                 bool           `json:"terminal_ok_observed"`
-	Success                    bool           `json:"success"`
-	Reads                      []ReadEvidence `json:"reads"`
-	Events                     []StreamEvent  `json:"events"`
-	StopReason                 string         `json:"stop_reason,omitempty"`
+	Frames                     []atproto.Frame `json:"asynchronous_frames,omitempty"`
+	ResponseLines              []string        `json:"response_lines"`
+	Policy                     string          `json:"unsolicited_policy"`
+	RequestID                  uint64          `json:"host_request_id"`
+	Interface                  int             `json:"interface"`
+	Command                    string          `json:"command"`
+	PlannedOutHex              string          `json:"planned_out_hex"`
+	SafeToSend                 bool            `json:"safe_to_send_query"`
+	ResponseEvidenceSufficient bool            `json:"forensic_evidence_sufficient"`
+	AttributionIssues          []string        `json:"attribution_issues"`
+	Outcome                    string          `json:"outcome"`
+	ObservedBoundaryClassified bool            `json:"observed_pre_write_boundary_classified"`
+	WriteAttempted             bool            `json:"write_attempted"`
+	WriteSucceeded             bool            `json:"write_succeeded"`
+	EchoMatched                bool            `json:"echo_matched"`
+	TerminalOK                 bool            `json:"terminal_ok_observed"`
+	Success                    bool            `json:"success"`
+	Reads                      []ReadEvidence  `json:"reads"`
+	Events                     []StreamEvent   `json:"events"`
+	StopReason                 string          `json:"stop_reason,omitempty"`
 }
 
 var hostRequestCounter atomic.Uint64
 
 // execute is internal: only ExecutePlan may choose the fixed next query.
-func (t *Transport) execute(ctx context.Context, q Query, record func(Report) error) (report Report, err error) {
+func (t *Transport) execute(ctx context.Context, q Query, record func(Report) error) (Report, error) {
+	return t.executeFrom(ctx, q, record, nil)
+}
+func (t *Transport) executeFrom(ctx context.Context, q Query, record func(Report) error, seed *Report) (report Report, err error) {
 	command, e := q.command()
 	if e != nil {
 		return report, e
 	}
 	report = Report{Policy: unsolicitedPolicy, RequestID: hostRequestCounter.Add(1), Interface: 2, Command: command, PlannedOutHex: hex.EncodeToString([]byte(command + "\r")), Reads: []ReadEvidence{}, Events: []StreamEvent{}}
 	stream := newATStream(report.RequestID, q)
+	if seed != nil {
+		report = *seed
+		report.Reads = append([]ReadEvidence(nil), seed.Reads...)
+		report.Policy = unsolicitedPolicy
+		stream, e = replayStream(*seed)
+		if e != nil {
+			return report, e
+		}
+		report.Success = false
+		report.StopReason = ""
+		report.Outcome = ""
+	}
 	evidenceFailure := false
 	attributionIssue := func(reason string) { report.AttributionIssues = append(report.AttributionIssues, reason) }
 	checkpoint := func() error {
@@ -56,6 +73,7 @@ func (t *Transport) execute(ctx context.Context, q Query, record func(Report) er
 			return nil
 		}
 		report.Events = stream.events
+		report.Frames = append([]atproto.Frame(nil), stream.frames...)
 		if e := record(report); e != nil {
 			evidenceFailure = true
 			return fmt.Errorf("evidence checkpoint failed: %w", e)
@@ -65,6 +83,7 @@ func (t *Transport) execute(ctx context.Context, q Query, record func(Report) er
 	defer func() {
 		stream.finishFragment("incomplete line at end of attempt")
 		report.Events = stream.events
+		report.Frames = append([]atproto.Frame(nil), stream.frames...)
 		report.EchoMatched = stream.echo
 		report.TerminalOK = stream.terminal
 		if err == nil {
@@ -90,11 +109,14 @@ func (t *Transport) execute(ctx context.Context, q Query, record func(Report) er
 		return report, err
 	}
 	reader := t.b
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	totalBytes := 0
+	for _, r := range report.Reads {
+		totalBytes += len(r.ValidHex) / 2
+	}
 	receive := func(phase string, maxWait time.Duration) error {
-		if len(report.Reads) >= 32 || totalBytes >= 4096 {
+		if len(report.Reads) >= 1024 || totalBytes >= 65536 {
 			return errors.New("bounded input budget exhausted")
 		}
 		wait, e := boundedWait(ctx, maxWait)
@@ -102,7 +124,7 @@ func (t *Transport) execute(ctx context.Context, q Query, record func(Report) er
 			return e
 		}
 		size := 512
-		if remaining := 4096 - totalBytes; remaining < size {
+		if remaining := 65536 - totalBytes; remaining < size {
 			size = remaining
 		}
 		buf := make([]byte, size)
@@ -129,79 +151,91 @@ func (t *Transport) execute(ctx context.Context, q Query, record func(Report) er
 			stream.retainTail(buf[:d.RawSize])
 			return stream.fault
 		}
-		if e = stream.feed(buf[:d.RawSize]); e != nil {
+		parseErr := stream.feed(buf[:d.RawSize])
+		if e = checkpoint(); e != nil {
 			return e
+		}
+		if parseErr != nil {
+			return parseErr
 		}
 		return ctx.Err()
 	}
-	// Sampling is evidence collection, NOT a proof of physical RX silence.
-	// Extra reads only finish an observed fragment (at most four total), never
-	// seek physical silence. Timeout ambiguity remains an audit note; actual framing faults cannot PASS.
-	for preReads := 0; preReads < 4; preReads++ {
-		if err = receive("before_write", 50*time.Millisecond); err != nil {
-			if ctx.Err() != nil {
-				return report, ctx.Err()
-			}
-			if evidenceFailure || errors.Is(err, context.DeadlineExceeded) || len(report.Reads) == 0 {
+	if seed == nil {
+		// Sampling is evidence collection, NOT a proof of physical RX silence.
+		// Extra reads only finish an observed fragment (within the bounded read/byte/time budget), never
+		// seek physical silence. Timeout ambiguity remains an audit note; actual framing faults cannot PASS.
+		for preReads := 0; preReads < 1024; preReads++ {
+			if err = receive("before_write", 50*time.Millisecond); err != nil {
+				if ctx.Err() != nil {
+					return report, ctx.Err()
+				}
+				if evidenceFailure || errors.Is(err, context.DeadlineExceeded) || len(report.Reads) == 0 {
+					return report, err
+				}
+				last := report.Reads[len(report.Reads)-1].Diagnostic
+				// Only a returned timeout or a parser fault is an attribution issue.
+				// Invalid SDK counts, transport faults and recorder failures stay STOP.
+				if (last.Category == "timeout" && (last.ReturnCode == ioTimeout || last.ReturnCode == usbTransactionTimeout)) || (last.CountValid && stream.fault != nil && errors.Is(err, stream.fault)) {
+					attributionIssue(err.Error())
+					break
+				}
 				return report, err
 			}
-			last := report.Reads[len(report.Reads)-1].Diagnostic
-			// Only a returned timeout or a parser fault is an attribution issue.
-			// Invalid SDK counts, transport faults and recorder failures stay STOP.
-			if (last.Category == "timeout" && (last.ReturnCode == ioTimeout || last.ReturnCode == usbTransactionTimeout)) || (last.CountValid && stream.fault != nil && errors.Is(err, stream.fault)) {
-				attributionIssue(err.Error())
+			if stream.boundary() {
 				break
 			}
+			if preReads == 1023 {
+				attributionIssue("pre-write frame completion budget exhausted")
+			}
+		}
+		report.ObservedBoundaryClassified = stream.boundary() && len(report.AttributionIssues) == 0
+		if stream.fault != nil || !stream.boundary() {
+			return report, errors.New("unclassified pre-write boundary")
+		}
+		err = nil // only timeout attribution notes remain; no observed partial frame
+		wait, e := boundedWait(ctx, 250*time.Millisecond)
+		if e != nil {
+			return report, e
+		}
+		report.SafeToSend = true
+		if err = checkpoint(); err != nil {
+			report.SafeToSend = false
 			return report, err
 		}
+		// Disk synchronization may consume the remaining context budget.
+		wait, e = boundedWait(ctx, 250*time.Millisecond)
+		if e != nil {
+			report.SafeToSend = false
+			return report, e
+		}
+		report.WriteAttempted = true
+		if err = checkpoint(); err != nil {
+			return report, err
+		}
+		if err = t.b.write(q, wait); err != nil {
+			return report, fmt.Errorf("read-only query write failed; no retry: %w", err)
+		}
+		report.WriteSucceeded = true
 		if stream.boundary() {
-			break
+			if err = stream.markWritten(); err != nil {
+				return report, err
+			}
+		} else {
+			// Preserve the pre-write fragment without interpreting its continuation
+			// as this command's response. The parser fault remains sticky.
+			stream.finishFragment("pre-write fragment crosses write boundary")
+			stream.state = "after_write_unattributed"
 		}
-		if preReads == 3 {
-			attributionIssue("pre-write frame completion budget exhausted")
-		}
-	}
-	report.ObservedBoundaryClassified = stream.boundary() && len(report.AttributionIssues) == 0
-	err = nil // pre-write attribution faults are carried explicitly above
-	wait, e := boundedWait(ctx, 250*time.Millisecond)
-	if e != nil {
-		return report, e
-	}
-	report.SafeToSend = true
-	if err = checkpoint(); err != nil {
-		report.SafeToSend = false
-		return report, err
-	}
-	// Disk synchronization may consume the remaining context budget.
-	wait, e = boundedWait(ctx, 250*time.Millisecond)
-	if e != nil {
-		report.SafeToSend = false
-		return report, e
-	}
-	report.WriteAttempted = true
-	if err = t.b.write(q, wait); err != nil {
-		return report, fmt.Errorf("read-only query write failed; no retry: %w", err)
-	}
-	report.WriteSucceeded = true
-	if stream.boundary() {
-		if err = stream.markWritten(); err != nil {
+		if err = checkpoint(); err != nil {
 			return report, err
 		}
-	} else {
-		// Preserve the pre-write fragment without interpreting its continuation
-		// as this command's response. The parser fault remains sticky.
-		stream.finishFragment("pre-write fragment crosses write boundary")
-		stream.state = "after_write_unattributed"
-	}
-	if err = checkpoint(); err != nil {
-		return report, err
 	}
 	for {
 		if err = receive("after_write", 200*time.Millisecond); err != nil {
 			return report, err
 		}
-		if stream.terminal {
-			// No extra read after OK, including to finish a trailing partial URC.
+		if stream.terminal && stream.boundary() {
+			// Finish only an already observed trailing URC subframe before another OUT.
 			if err = stream.validateSuccess(); err != nil {
 				return report, err
 			}

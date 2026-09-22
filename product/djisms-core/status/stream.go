@@ -4,10 +4,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/iniwex5/vohive/product/djisms-core/atproto"
 	"strings"
 )
 
-const unsolicitedPolicy = "readonly-status-v1"
+const unsolicitedPolicy = "readonly-status-demux-v2"
 
 type StreamEvent struct {
 	Kind      string `json:"kind"`
@@ -20,6 +21,8 @@ type StreamEvent struct {
 }
 
 type atStream struct {
+	demux           atproto.Demux
+	frames          []atproto.Frame
 	command, prefix string
 	identity        bool
 	allowEmpty      bool
@@ -43,7 +46,7 @@ func (p *atStream) event(kind string, start int, raw []byte, text, syntax string
 }
 func (p *atStream) fail(reason string) error { p.fault = errors.New(reason); return p.fault }
 func (p *atStream) markWritten() error {
-	if p.fault != nil || p.state != "before_write" || len(p.pending) != 0 {
+	if p.fault != nil || p.state != "before_write" || len(p.pending) != 0 || p.demux.Pending() {
 		return p.fail("cannot attribute response across an unresolved input boundary")
 	}
 	p.state = "awaiting_echo"
@@ -91,6 +94,26 @@ func (p *atStream) line(raw []byte, contentLen int) error {
 		p.event("framing", start, raw, "", "", 0)
 		return nil
 	}
+	if consumed, frame, e := p.demux.FeedLine(text, raw, start); consumed {
+		if e != nil {
+			p.event("invalid_async_frame", start, raw, text, "", 0)
+			return p.fail(e.Error())
+		}
+		p.event("asynchronous_pdu_fragment", start, raw, text, "pdu-mode", 0)
+		if frame != nil {
+			if len(p.frames) >= 128 {
+				return p.fail("asynchronous frame bound")
+			}
+			p.frames = append(p.frames, *frame)
+		}
+		return nil
+	}
+	// A known URC is separated even inside an unprefixed identity response.
+	// CPIN is also a solicited query body; the active exact query keeps ownership.
+	if atproto.KnownSingle(text) && !(p.state == "awaiting_ok" && p.prefix == "+CPIN:" && strings.HasPrefix(text, p.prefix)) {
+		p.event("unsolicited_text", start, raw, text, "classified-single-line-urc", 0)
+		return nil
+	}
 	// Reserved response/error tokens take precedence over generic text events.
 	if modemError(text) {
 		p.event("modem_error", start, raw, text, "", 0)
@@ -125,13 +148,13 @@ func (p *atStream) line(raw []byte, contentLen int) error {
 		return p.fail("unsupported command/result mode or multiline body")
 	}
 	// Only expected data after this command's exact echo can be its body.
-	if p.state == "awaiting_ok" && ((p.prefix != "" && strings.HasPrefix(text, p.prefix)) || (p.identity && !strings.HasPrefix(text, "+") && !strings.HasPrefix(text, "^"))) {
+	if p.state == "awaiting_ok" && ((p.prefix != "" && strings.HasPrefix(text, p.prefix)) || (p.identity && identityLine(p.command, text))) {
 		p.payload = append(p.payload, text)
 		p.event("response_data", start, raw, text, "", p.requestID)
 		return nil
 	}
-	p.event("unsolicited_text", start, raw, text, "printable_ascii_crlf", 0)
-	return nil
+	p.event("unclassified_line", start, raw, text, "", 0)
+	return p.fail("unclassified AT line")
 }
 
 // CRLF can span reads. Bare LF/CR are invalid, except the exact awaited AT echo
@@ -185,11 +208,11 @@ func (p *atStream) feed(b []byte) error {
 			p.retainTail(b[i+1:])
 			return p.fail("binary/control byte in AT stream")
 		}
-		if len(p.pending) > 512 {
+		if len(p.pending) > 1024 {
 			p.event("unknown_oversize_line", p.start, p.pending, "", "", 0)
 			p.pending = nil
 			p.retainTail(b[i+1:])
-			return p.fail("line exceeds 512 bytes")
+			return p.fail("line exceeds 1024 bytes")
 		}
 	}
 	return nil
@@ -201,6 +224,9 @@ func (p *atStream) retainTail(b []byte) {
 	}
 }
 func (p *atStream) finishFragment(reason string) {
+	if p.demux.Pending() {
+		p.fail("incomplete asynchronous PDU")
+	}
 	if len(p.pending) > 0 {
 		p.event("unknown_fragment", p.start, p.pending, "", "", 0)
 		p.pending = nil
@@ -209,9 +235,11 @@ func (p *atStream) finishFragment(reason string) {
 	}
 }
 func (p *atStream) complete() bool {
-	return p.fault == nil && p.state == "complete" && len(p.pending) == 0
+	return p.fault == nil && p.state == "complete" && len(p.pending) == 0 && !p.demux.Pending()
 }
-func (p *atStream) boundary() bool { return p.fault == nil && len(p.pending) == 0 }
+func (p *atStream) boundary() bool {
+	return p.fault == nil && len(p.pending) == 0 && !p.demux.Pending()
+}
 func (p *atStream) validateSuccess() error {
 	if !p.complete() || !p.echo || !p.terminal || (len(p.payload) == 0 && !p.allowEmpty) {
 		return fmt.Errorf("response not unambiguously complete")

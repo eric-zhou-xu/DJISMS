@@ -178,7 +178,8 @@ func (t *Transport) Purge(ctx context.Context, c Config, sink Sink) (r Summary, 
 			if valid {
 				raw = hex.EncodeToString(buf[:d.RawSize])
 			}
-			if e = sink.Save("usb_read", map[string]any{"number": readCount, "stream_offset": p.offset, "diagnostic": d, "valid_hex": raw}); e != nil {
+			observed := time.Now().UTC().Format(time.RFC3339Nano)
+			if e = sink.Save("usb_read", map[string]any{"observed_utc": observed, "number": readCount, "stream_offset": p.offset, "diagnostic": d, "valid_hex": raw}); e != nil {
 				return Response{}, e
 			}
 			// Unlike a listener there is no idle/pre-read timeout. Any command read timeout
@@ -186,15 +187,29 @@ func (t *Transport) Purge(ctx context.Context, c Config, sink Sink) (r Summary, 
 			if !valid {
 				return Response{}, fmt.Errorf("read failure/timeout; no retry: %s %v", d.ReturnHex, re)
 			}
-			p.when = time.Now().UTC().Format(time.RFC3339Nano)
-			if e = p.feed(buf[:d.RawSize]); e != nil {
-				return Response{}, e
-			}
-			if len(p.directs) > 0 {
-				if e = sink.Save("unexpected_direct_raw", p.directs); e != nil {
+			p.when = observed
+			parseErr := p.feed(buf[:d.RawSize])
+			for _, f := range p.asynchronous {
+				if e = sink.Save("asynchronous_urc", f); e != nil {
 					return Response{}, e
 				}
-				return Response{}, errors.New("new direct SMS during gate; stop")
+			}
+			p.asynchronous = nil
+			for _, d := range p.directs {
+				if e = sink.Save("direct_handoff_raw", d); e != nil {
+					return Response{}, e
+				}
+				receiver, ok := sink.(interface{ DirectPurge(Direct) error })
+				if !ok {
+					return Response{}, errors.New("durable direct handoff unavailable")
+				}
+				if e = receiver.DirectPurge(d); e != nil {
+					return Response{}, e
+				}
+			}
+			p.directs = nil
+			if parseErr != nil {
+				return Response{}, parseErr
 			}
 			if len(p.notices) > 0 {
 				if e = sink.Save("unexpected_cmti", p.notices); e != nil {

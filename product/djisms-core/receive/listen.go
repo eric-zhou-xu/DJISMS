@@ -98,12 +98,14 @@ func (t *Transport) Listen(ctx context.Context, cfg Config, sink Sink) (r Summar
 		if valid {
 			raw = hex.EncodeToString(buf[:d.RawSize])
 		}
+		observed := time.Now().UTC().Format(time.RFC3339Nano)
 		ev := struct {
+			Observed   string         `json:"observed_utc"`
 			Number     int            `json:"number"`
 			Offset     int            `json:"stream_offset"`
 			Diagnostic ReadDiagnostic `json:"diagnostic"`
 			Hex        string         `json:"valid_hex"`
-		}{reads, p.offset, d, raw}
+		}{observed, reads, p.offset, d, raw}
 		if e = sink.Save("usb_read", ev); e != nil {
 			return false, e
 		} // fsync BEFORE framing
@@ -122,16 +124,23 @@ func (t *Transport) Listen(ctx context.Context, cfg Config, sink Sink) (r Summar
 			}
 			return false, fmt.Errorf("read fault: %s: %v", d.ReturnHex, re)
 		}
-		p.when = time.Now().UTC().Format(time.RFC3339Nano)
-		if e = p.feed(buf[:d.RawSize]); e != nil {
-			return false, e
+		p.when = observed
+		parseErr := p.feed(buf[:d.RawSize])
+		for _, f := range p.asynchronous {
+			if e = sink.Save("asynchronous_urc", f); e != nil {
+				return false, e
+			}
 		}
+		p.asynchronous = nil
 		for _, d := range p.directs {
 			if e = sink.Direct(d); e != nil {
 				return false, e
 			}
 		}
 		p.directs = nil
+		if parseErr != nil {
+			return false, parseErr
+		}
 		if !p.boundary() {
 			if partialSince.IsZero() {
 				partialSince = time.Now()

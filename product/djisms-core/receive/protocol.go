@@ -3,9 +3,11 @@ package receive
 import (
 	"encoding/csv"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/iniwex5/vohive/internal/smsreceive"
+	"github.com/iniwex5/vohive/product/djisms-core/atproto"
 	"strconv"
 	"strings"
 )
@@ -67,7 +69,8 @@ type framer struct {
 	offset, start int
 	active        *Response
 	pendingStored *smsreceive.RawMessage
-	pendingDirect *Direct
+	demux         atproto.Demux
+	asynchronous  []atproto.Frame
 	directs       []Direct
 	directID      int
 	notices       []Notice
@@ -82,7 +85,7 @@ func fields(s string) ([]string, error) {
 	return r.Read()
 }
 func (p *framer) boundary() bool {
-	return p.fault == nil && len(p.pending) == 0 && p.pendingDirect == nil && p.pendingStored == nil
+	return p.fault == nil && len(p.pending) == 0 && !p.demux.Pending() && p.pendingStored == nil
 }
 func (p *framer) begin(c Command) error {
 	if !p.boundary() || p.active != nil {
@@ -147,6 +150,26 @@ func (p *framer) line(raw []byte, n int) error {
 	if s == "" {
 		return nil
 	}
+	if consumed, frame, e := p.demux.FeedLine(s, raw, p.start); consumed {
+		if e != nil {
+			return e
+		}
+		if frame != nil {
+			if frame.Kind == "CMT" {
+				if p.directID >= 128 {
+					return errors.New("direct event bound")
+				}
+				p.directID++
+				p.directs = append(p.directs, Direct{EventID: p.directID, ObservedUTC: p.when, Offset: frame.Offset, Header: frame.Header, HeaderHex: frame.HeaderHex, TPDULength: frame.Length, PDU: frame.PDU, PDULineHex: frame.PDULineHex})
+			} else {
+				if len(p.asynchronous) >= 128 {
+					return errors.New("asynchronous queue bound")
+				}
+				p.asynchronous = append(p.asynchronous, *frame)
+			}
+		}
+		return nil
+	}
 	if strings.HasPrefix(s, "+CMTI:") {
 		v, e := fields(strings.TrimPrefix(s, "+CMTI:"))
 		if e != nil || len(v) != 2 || v[0] != "ME" {
@@ -160,31 +183,6 @@ func (p *framer) line(raw []byte, n int) error {
 			return errors.New("notification queue limit")
 		}
 		p.notices = append(p.notices, Notice{idx, p.start, hex.EncodeToString(raw), p.when})
-		return nil
-	}
-	// A direct header/body is its own subframe, even inside a CMGR/CMGL response.
-	if p.pendingDirect != nil {
-		if !isHex(s) {
-			return errors.New("direct body must be hex")
-		}
-		d := p.pendingDirect
-		d.PDU = s
-		d.PDULineHex = hex.EncodeToString(raw)
-		p.directs = append(p.directs, *d)
-		p.pendingDirect = nil
-		return nil
-	}
-	if strings.HasPrefix(s, "+CMT:") {
-		v, e := fields(strings.TrimPrefix(s, "+CMT:"))
-		if e != nil || len(v) != 2 {
-			return errors.New("invalid direct PDU header")
-		}
-		length, e := strconv.Atoi(v[1])
-		if e != nil || length < 1 || length > 255 || p.directID >= 128 {
-			return errors.New("direct length/event bound")
-		}
-		p.directID++
-		p.pendingDirect = &Direct{EventID: p.directID, ObservedUTC: p.when, Offset: p.start, Header: s, HeaderHex: hex.EncodeToString(raw), TPDULength: length}
 		return nil
 	}
 	if p.pendingStored != nil {
@@ -288,7 +286,10 @@ func (p *framer) line(raw []byte, n int) error {
 	if isHex(s) {
 		return errors.New("orphan PDU")
 	}
-	return nil
+	if atproto.KnownSingle(s) {
+		return nil
+	}
+	return errors.New("unclassified asynchronous line")
 }
 func (p *framer) finish() (Response, error) {
 	if p.active == nil || !p.active.Done || !p.active.Echo || !p.boundary() {
@@ -342,4 +343,61 @@ func settings(q []Response) (int, error) {
 		return 0, errors.New("requires CSMS service 0 with MT support; no CNMA or setting changes allowed")
 	}
 	return storage(q[1])
+}
+
+// ReplayDirectFacts reconstructs direct-event ordinals and byte offsets from
+// preserved transport facts. It performs no USB I/O or archive mutation.
+func ReplayDirectFacts(events []struct {
+	Kind string
+	Data []byte
+}) ([]Direct, error) {
+	p := &framer{}
+	out := []Direct{}
+	for _, ev := range events {
+		switch ev.Kind {
+		case "out_succeeded":
+			var c Command
+			if e := json.Unmarshal(ev.Data, &c); e != nil {
+				return out, e
+			}
+			if e := p.begin(c); e != nil {
+				return out, e
+			}
+		case "response":
+			if _, e := p.finish(); e != nil {
+				return out, e
+			}
+		case "usb_read":
+			var v struct {
+				Hex        string         `json:"valid_hex"`
+				When       string         `json:"observed_utc"`
+				Diagnostic ReadDiagnostic `json:"diagnostic"`
+			}
+			if e := json.Unmarshal(ev.Data, &v); e != nil {
+				return out, e
+			}
+			if v.Hex == "" {
+				continue
+			}
+			b, e := hex.DecodeString(v.Hex)
+			if e != nil {
+				return out, e
+			}
+			d := v.Diagnostic
+			if d.ReturnCode != 0 || !d.CountValid || d.ActualBytes == nil || *d.ActualBytes != d.RawSize || len(b) != int(d.RawSize) || v.When == "" {
+				return out, errors.New("incomplete timestamped read proof")
+			}
+			p.when = v.When
+			e = p.feed(b)
+			out = append(out, p.directs...)
+			p.directs = nil
+			if e != nil {
+				return out, e
+			}
+		}
+	}
+	if !p.boundary() || (p.active != nil && !p.active.Done) {
+		return out, errors.New("unclosed transport frame/response requires explicit review")
+	}
+	return out, nil
 }

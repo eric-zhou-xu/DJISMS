@@ -217,7 +217,7 @@ func TestFailClosed(t *testing.T) {
 	}
 }
 func TestDirectAllSplitsInsideStoredResponse(t *testing.T) {
-	wire := "AT+CMGR=11\r\r\n+CMGR: 0,,1\r\n+CMT: ,2\r\n001234\r\n+CMTI: \"ME\",12\r\n0000\r\nOK\r\n"
+	wire := "AT+CMGR=11\r\r\n+CMGR: 0,,1\r\n+CMT: ,2\r\n001034\r\n+CMTI: \"ME\",12\r\n0000\r\nOK\r\n"
 	for cut := 1; cut < len(wire); cut++ {
 		p := &framer{when: "time"}
 		_ = p.begin(Command{7, 11})
@@ -228,11 +228,11 @@ func TestDirectAllSplitsInsideStoredResponse(t *testing.T) {
 			t.Fatal(cut, e)
 		}
 		r, e := p.finish()
-		if e != nil || len(r.Messages) != 1 || r.Messages[0].PDU != "0000" || len(p.directs) != 1 || p.directs[0].PDU != "001234" || len(p.notices) != 1 {
+		if e != nil || len(r.Messages) != 1 || r.Messages[0].PDU != "0000" || len(p.directs) != 1 || p.directs[0].PDU != "001034" || len(p.notices) != 1 {
 			t.Fatal(cut, e, r)
 		}
 		d := p.directs[0]
-		if d.StorageIndex != nil || d.ReportedStatus != nil || d.Header != "+CMT: ,2" || d.PDULineHex != "3030313233340d0a" {
+		if d.StorageIndex != nil || d.ReportedStatus != nil || d.Header != "+CMT: ,2" || d.PDULineHex != "3030313033340d0a" {
 			t.Fatal(d)
 		}
 	}

@@ -276,3 +276,33 @@ func TestHashIncludesOriginalPDUBytes(t *testing.T) {
 		t.Fatal("bad declared length accepted")
 	}
 }
+
+type directSink struct {
+	*sink
+	received []Direct
+}
+
+func (s *directSink) DirectPurge(d Direct) error { s.received = append(s.received, d); return nil }
+func TestDirectInterleavingDoesNotAlterDeleteIdentity(t *testing.T) {
+	for _, kind := range []uint8{1, 7, 9, 10, 13, 15} {
+		f, c := setup(t)
+		original := &fake{target: f.target, targetLength: f.targetLength, targetIndex: f.targetIndex, hashes: f.hashes, override: map[uint8]string{}}
+		cmd := Command{Kind: kind}
+		if kind == 7 || kind == 9 {
+			cmd.Index = c.TargetIndex
+		}
+		original.write(cmd, time.Millisecond)
+		wire, _ := cmd.wire()
+		body := strings.TrimSuffix(strings.TrimPrefix(string(original.pending), wire+"\r\r\n"), "\r\nOK\r\n")
+		f.override[kind] = "+CMT: ,2\r\n001034\r\n" + body
+		tr := &Transport{b: f}
+		if e := tr.Connect(context.Background()); e != nil {
+			t.Fatal(e)
+		}
+		s := &directSink{sink: &sink{}}
+		r, e := tr.Purge(context.Background(), c, s)
+		if e != nil || !r.DeleteConfirmed || deleted(f) != 1 || len(s.received) != 1 || s.received[0].StorageIndex != nil {
+			t.Fatal(kind, e, r)
+		}
+	}
+}
