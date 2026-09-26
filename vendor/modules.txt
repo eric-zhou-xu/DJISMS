@@ -1,9 +1,0 @@
-# github.com/warthog618/sms v0.3.0
-## explicit; go 1.13
-github.com/warthog618/sms
-github.com/warthog618/sms/encoding/bcd
-github.com/warthog618/sms/encoding/gsm7
-github.com/warthog618/sms/encoding/gsm7/charset
-github.com/warthog618/sms/encoding/semioctet
-github.com/warthog618/sms/encoding/tpdu
-github.com/warthog618/sms/encoding/ucs2

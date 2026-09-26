@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>DJISMS</string>
+	<key>CFBundleExecutable</key>
+	<string>DJISMS</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.djisms.mac.uicandidate</string>
+	<key>CFBundleName</key>
+	<string>DJISMS</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.2.0</string>
+	<key>CFBundleVersion</key>
+	<string>12</string>
+	<key>DJISMSBuildID</key>
+	<string>Local unified receiver 1.2.0</string>
+	<key>DJISMSCoreBuildID</key>
+	<string>20260925-startup-09</string>
+	<key>DJISMSCoreSourceTree</key>
+	<string>b0c07f44a95aceb080408618baf3f1ed31429cc7e11d3dc122de34c0b516035a</string>
+	<key>DJISMSCoreVersion</key>
+	<string>1.1.0</string>
+	<key>DJISMSReceiveOnly</key>
+	<true/>
+	<key>DJISMSSIMHelperRevision</key>
+	<string>20260925-startup-09</string>
+	<key>DJISMSSIMHelperSourceTree</key>
+	<string>b0c07f44a95aceb080408618baf3f1ed31429cc7e11d3dc122de34c0b516035a</string>
+	<key>DJISMSSourceTree</key>
+	<string>b0c07f44a95aceb080408618baf3f1ed31429cc7e11d3dc122de34c0b516035a</string>
+	<key>DJISMSUIRevision</key>
+	<string>20260925-startup-09</string>
+	<key>DJISMSUISourceTree</key>
+	<string>b0c07f44a95aceb080408618baf3f1ed31429cc7e11d3dc122de34c0b516035a</string>
+	<key>DJISMSVersion</key>
+	<string>1.1.0</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>DJISMS</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>DJISMS 需要与连接到这台 Mac 的 4G 模块通信，并通过模块的网络确认连接状态。短信内容不会上传。</string>
+</dict>
+</plist>
