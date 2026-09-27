@@ -1,4 +1,4 @@
-"""Read-only presentation bridge; USB ownership remains with local.djisms.receiver."""
+"""Local archive presentation and deletion bridge; USB ownership remains with local.djisms.receiver."""
 import json,sys,sqlite3,time,os
 from pathlib import Path
 from datetime import datetime
@@ -22,11 +22,19 @@ for line in sys.stdin:
   q=json.loads(line);method=q.get('method');data={}
   if method=='status':
    s=json.loads((root/'运行状态.json').read_text());fresh=time.time()-(root/'运行状态.json').stat().st_mtime<20;ok=s.get('ok') and fresh
-   data={'state':{'phase':'ready' if ok else 'disconnected','connected':bool(ok),'sim':'READY' if ok else '', 'status_observed':s.get('checked_at',''),'ui_failure':'每 5 秒自动接收 · 模块原件保留' if ok else s.get('error','后台状态过期，待恢复'),'internet':'未单独核验'},'preferences':{'notifications':prefs.get('notifications',True),'auto_purge':False}}
+   data={'state':{'phase':'ready' if ok else 'disconnected','connected':bool(ok),'sim':'READY' if ok else '', 'status_observed':s.get('checked_at',''),'ui_failure':('模块通知接收 · 保存校验后清理原件' if s.get('listener')=='listening' else '正在连接通知监听') if ok else ('USB 重连中，请稍候' if s.get('listener')=='reconnecting' else s.get('error','后台状态过期，待恢复')),'internet':'未单独核验'},'preferences':{'notifications':prefs.get('notifications',True),'auto_purge':True}}
    rows=messages();ids={r['id'] for r in rows}
    if initial:seen.update(ids);save();initial=False
    if last_ids is not None and ids!=last_ids:emit({'event':'history_changed'})
    last_ids=ids
+  elif method=='delete_local':
+   import importlib.util
+   spec=importlib.util.spec_from_file_location('djisms_archive',Path(__file__).with_name('receiver.py'));module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+   with sqlite3.connect(root/'短信.sqlite3',timeout=30) as db:
+    db.execute('PRAGMA synchronous=FULL');remaining=module.delete_local(db,q.get('message_id'))
+   data={'deleted':True,'remaining':remaining};emit({'event':'history_changed'})
+  elif method=='rescan':
+   path=root/'.manual-check';path.touch(mode=0o600);data={'requested':True}
   elif method=='messages':
    rows=messages();search=str(q.get('search','')).casefold();rows=[r for r in rows if search in (r['sender']+' '+r['body']).casefold()];offset=max(0,int(q.get('offset',0)));limit=min(200,max(1,int(q.get('limit',200))));data=rows[offset:offset+limit]
   elif method=='message':data=next(r for r in messages() if r['id']==q.get('message_id'))
