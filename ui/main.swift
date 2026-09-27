@@ -119,7 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         let head=stack([icon("cellularbars",size:36),stack([title,stack([dot,desc],vertical:false,spacing:6)],spacing:7),button("立即补查",#selector(refreshDevice))],vertical:false,spacing:14)
         let separator=NSBox();separator.boxType = .separator
         let rows=NSGridView();rows.rowSpacing=14;rows.columnSpacing=14;rows.xPlacement = .leading;rows.yPlacement = .center
-        for (key,name) in [("number","本机号码"),("sim","SIM 状态"),("carrier","运营商"),("type","网络类型"),("signal","信号强度"),("registration","网络状态"),("cache","4G模块短信存储（ME）"),("smstorage","SIM短信存储（SM）"),("recovery","最近恢复"),("internet","Mac 4G"),("sample","状态更新")]{
+        for (key,name) in [("number","本机号码"),("sim","SIM 状态"),("carrier","运营商"),("type","网络类型"),("signal","信号强度"),("registration","网络状态"),("cache","4G模块短信存储（ME）"),("smstorage","SIM短信存储（SM）"),("recovery","最近补查 / 插口"),("internet","Mac 4G"),("sample","状态更新")]{
             let value=label("待读取",key=="number" ? 16:13,key=="number" ? .semibold:.regular);fields[key]=value
             if key=="number"{let b=button("修改",#selector(editNumber));modifyButton=b;b.setContentHuggingPriority(.required,for:.horizontal);value.setContentHuggingPriority(.defaultLow,for:.horizontal);rows.addRow(with:[label(name,13,.regular,.secondaryLabelColor),stack([value,b],vertical:false,spacing:12)])}
             else{rows.addRow(with:[label(name,13,.regular,.secondaryLabelColor),value])}
@@ -159,9 +159,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         footerNumber.stringValue=simNumber.isEmpty ? "本机号码未提供":simNumber;statusText.stringValue=state["ui_failure"] as? String ?? (phase=="safety_stop" ? "接收已暂停，短信档案保留。请查看使用帮助。":phaseName);statusText.textColor=phase=="safety_stop" ? .systemRed:.secondaryLabelColor
         deviceDot?.contentTintColor=statusColor;fields["connection"]?.stringValue=state["ui_failure"] as? String ?? (receiving ? "已连接，\(phaseName)":phaseName);fields["number"]?.stringValue=simNumber.isEmpty ? "未提供":simNumber;modifyButton?.isEnabled=connected && !simID.isEmpty
         fields["sim"]?.stringValue=connected ? ((state["sim"] as? String ?? "").contains("READY") ? "已插入":"等待就绪"):(phase=="stopped" ? "服务未运行，未读取":"待连接");fields["carrier"]?.stringValue=carrier;fields["type"]?.stringValue=lte == "LTE" ? "4G (LTE)":lte;fields["signal"]?.stringValue=signal;fields["signal"]?.textColor=signal=="强" ? .systemGreen:.labelColor;fields["registration"]?.stringValue=lte=="LTE" ? "已注册（4G）":(phase=="stopped" ? "服务未运行，未核验":"未单独核验")
-        let used=state["used"] as? Int ?? 0,capacity=state["capacity"] as? Int ?? 0;fields["cache"]?.stringValue=connected && capacity>0 ? storageText(["used":used,"total":capacity]):"待读取"
-        if let failure=simFeatureFailure {fields["smstorage"]?.stringValue="不可用 · \(failure)"}else if let snap=simSnapshot,snap["sim_id"] as? String==state["sim_id"] as? String {fields["smstorage"]?.stringValue=storageText(snap["sm"] as? [String:Any])+"（上次查询）"}else{fields["smstorage"]?.stringValue="本版由后台核对，界面暂无容量数据"}
-        fields["recovery"]?.stringValue=(state["last_recovery"] as? String).map{dateText($0)} ?? "本次运行尚无恢复记录";fields["internet"]?.stringValue=connected && !(state["ipv4"] as? String ?? "").isEmpty ? "已连接 · \(state["ipv4"] as? String ?? "")":(phase=="stopped" ? "服务未运行，未核验":"当前未单独核验");fields["internet"]?.textColor=connected ? .systemGreen:.secondaryLabelColor;fields["sample"]?.stringValue=dateText(state["status_observed"] as? String)
+        fields["cache"]?.stringValue=connected ? storageText(state["ME"] as? [String:Any])+"（补查时）":"待连接"
+        fields["smstorage"]?.stringValue=connected ? storageText(state["SM"] as? [String:Any])+"（补查时）":"待连接"
+        fields["recovery"]?.stringValue=(state["last_scan_at"] as? String).map{dateText($0)+" · USB \(state["usb_location"] as? String ?? "")"} ?? "尚无成功补查"
+        fields["internet"]?.stringValue="未做外网连通测试";fields["internet"]?.textColor = .secondaryLabelColor;fields["sample"]?.stringValue=dateText(state["status_observed"] as? String)
         notificationButton?.state=notifications ? .on:.off;purgeButton?.state=autoPurge ? .on:.off;notificationButton?.isEnabled=client.isReady;purgeButton?.isEnabled=false;soundButton?.state=sound ? .on:.off;permissionLabel?.stringValue=permissionGranted ? "系统通知已允许":"系统通知尚未允许"
         recentItem.title="查看最新短信\(unreadCount>0 ? "（\(unreadCount)）":"")"
         if let error=store.error,!errorShown{errorShown=true;alert("界面偏好",error)}

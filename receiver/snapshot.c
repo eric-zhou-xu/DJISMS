@@ -61,6 +61,10 @@ int main(int argc,char**argv){
   if(i==4){char *cp=strstr(all,"+CPMS:");if(!cp||sscanf(cp,"+CPMS: \"%7[A-Z]\"",original)!=1||(strcmp(original,"ME")&&strcmp(original,"SM")&&strcmp(original,"MT"))){result=14;goto end;}}
   if(!watching&&!deleting&&i!=1)printf("QUERY %s\n%s\n",cmds[i],all);
  }
+ if(!watching&&!deleting&&!strcmp(store,"ME")){
+  const char *info[]={"AT+COPS?","AT+CSQ","AT+CEREG?",NULL};
+  for(int j=0;info[j];j++)if(query(u,in,out,info[j],all,sizeof(all))==0)printf("INFO %s\n%s\n",info[j],all);
+ }
  if(watching){
   signal(SIGTERM,stopwatch);signal(SIGINT,stopwatch);
   result=query(u,in,out,"AT+QURCCFG=\"urcport\"",all,sizeof(all));if(result)goto end;
@@ -85,6 +89,7 @@ int main(int argc,char**argv){
  }
  char select[80];snprintf(select,sizeof(select),"AT+CPMS=\"%s\"",store);changed=1;result=query(u,in,out,select,all,sizeof(all));if(result)goto end;
  result=query(u,in,out,"AT+CPMS?",all,sizeof(all));if(result)goto end;char actual[8];char *cp=strstr(all,"+CPMS:");if(!cp||sscanf(cp,"+CPMS: \"%7[A-Z]\"",actual)!=1||strcmp(actual,store)){result=14;goto end;}
+ if(!deleting)printf("STORAGE %s\n%s\n",store,all);
  if(deleting){
   char cmd[80];snprintf(cmd,sizeof(cmd),"AT+CMGR=%u",slot);result=query(u,in,out,cmd,all,sizeof(all));if(result)goto end;
   if(!same_pdu(all,expected)){result=21;goto end;}

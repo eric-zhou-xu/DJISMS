@@ -23,6 +23,7 @@ for line in sys.stdin:
   if method=='status':
    s=json.loads((root/'运行状态.json').read_text());fresh=time.time()-(root/'运行状态.json').stat().st_mtime<20;ok=s.get('ok') and fresh
    data={'state':{'phase':'ready' if ok else 'disconnected','connected':bool(ok),'sim':'READY' if ok else '', 'status_observed':s.get('checked_at',''),'ui_failure':('模块通知接收 · 保存校验后清理原件' if s.get('listener')=='listening' else '正在连接通知监听') if ok else ('USB 重连中，请稍候' if s.get('listener')=='reconnecting' else s.get('error','后台状态过期，待恢复')),'internet':'未单独核验'},'preferences':{'notifications':prefs.get('notifications',True),'auto_purge':True}}
+   data['state'].update(s.get('device_info',{}));data['state']['last_scan_at']=s.get('last_scan_at');data['state']['usb_location']=s.get('usb_location','');data['state']['status_observed']=s.get('last_scan_at') or s.get('checked_at','')
    rows=messages();ids={r['id'] for r in rows}
    if initial:seen.update(ids);save();initial=False
    if last_ids is not None and ids!=last_ids:emit({'event':'history_changed'})

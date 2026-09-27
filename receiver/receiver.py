@@ -72,7 +72,14 @@ def collect():
  sim=subprocess.run([str(Path(__file__).parent/'snapshot'),hex(loc),'SM'],capture_output=True,text=True,timeout=150)
  if sim.returncode:raise RuntimeError('SIM 存储检查失败；本轮未清理原件')
  rows+=parse_rows(sim.stdout,'SM')
- return loc,rows,storage
+ info={}
+ for key,prefix in [('operator','COPS'),('signal','CSQ'),('lte','CEREG')]:
+  match=re.search(r'^\+'+prefix+r':[^\r\n]*',p.stdout,re.M)
+  if match:info[key]=match[0]
+ for name,output in [('ME',p.stdout),('SM',sim.stdout)]:
+  match=re.search(r'STORAGE '+name+r'\n.*?\+CPMS:\s*"'+name+r'",(\d+),(\d+)',output,re.S)
+  if match:info[name]={'used':int(match[1]),'total':int(match[2])}
+ return loc,rows,storage,info
 
 def render(rows):
  lines=['DJISMS 短信收件箱','时间为保存时间（北京时间）；长短信可能分段显示。','']
@@ -159,16 +166,16 @@ def main():
  last_check=None
  recovery_attempt=0
  def publish(state):
-  state.update(mode='notification',checked_at=datetime.now().astimezone().isoformat(),last_scan_at=last_check,cleanup_policy='verified_local_then_delete_me_sm',scan_seconds=None,app_version='1.3.2')
+  state.update(mode='notification',checked_at=datetime.now().astimezone().isoformat(),last_scan_at=last_check,cleanup_policy='verified_local_then_delete_me_sm',scan_seconds=None,app_version='1.3.3')
   atomic(ROOT/'运行状态.json',json.dumps(state,ensure_ascii=False,indent=2))
  request=ROOT/'.manual-check'
  while True:
   loc=None
   try:
    request.unlink(missing_ok=True)
-   loc,rows,storage=collect();total=save_rows(db,rows);deleted=delete_saved(db,loc,rows);last_check=datetime.now().astimezone().isoformat()
+   loc,rows,storage,info=collect();total=save_rows(db,rows);deleted=delete_saved(db,loc,rows);last_check=datetime.now().astimezone().isoformat()
    recovery_attempt=0
-   state=dict(ok=True,saved_records=total,module_parts=len(rows),deleted_records=deleted,storage_configuration=storage)
+   state=dict(ok=True,saved_records=total,module_parts=len(rows),deleted_records=deleted,storage_configuration=storage,device_info=info,usb_location=hex(loc))
    publish(dict(state,listener='starting'))
    if '--once' in sys.argv:break
    child=subprocess.Popen([str(Path(__file__).parent/'snapshot'),hex(loc),'--watch'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,text=True,bufsize=1)
