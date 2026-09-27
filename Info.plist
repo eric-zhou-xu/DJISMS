@@ -15,17 +15,17 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.3.3</string>
+	<string>1.3.5</string>
 	<key>CFBundleVersion</key>
-	<string>133</string>
+	<string>135</string>
 	<key>DJISMSBuildID</key>
-	<string>模块实测状态 · USB 自动重连 · Build 133</string>
+	<string>当前 SIM 连接与号码显示 · Build 135</string>
 	<key>DJISMSCoreVersion</key>
-	<string>1.3.3</string>
+	<string>1.3.4</string>
 	<key>DJISMSReceiveOnly</key>
 	<true/>
 	<key>DJISMSVersion</key>
-	<string>1.3.3</string>
+	<string>1.3.5</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>LSUIElement</key>

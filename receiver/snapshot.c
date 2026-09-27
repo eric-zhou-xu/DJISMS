@@ -62,7 +62,7 @@ int main(int argc,char**argv){
   if(!watching&&!deleting&&i!=1)printf("QUERY %s\n%s\n",cmds[i],all);
  }
  if(!watching&&!deleting&&!strcmp(store,"ME")){
-  const char *info[]={"AT+COPS?","AT+CSQ","AT+CEREG?",NULL};
+  const char *info[]={"AT+COPS?","AT+CSQ","AT+CEREG?","AT+CNUM","AT+QCCID",NULL};
   for(int j=0;info[j];j++)if(query(u,in,out,info[j],all,sizeof(all))==0)printf("INFO %s\n%s\n",info[j],all);
  }
  if(watching){

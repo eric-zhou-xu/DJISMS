@@ -79,6 +79,11 @@ def collect():
  for name,output in [('ME',p.stdout),('SM',sim.stdout)]:
   match=re.search(r'STORAGE '+name+r'\n.*?\+CPMS:\s*"'+name+r'",(\d+),(\d+)',output,re.S)
   if match:info[name]={'used':int(match[1]),'total':int(match[2])}
+ cnum=re.search(r'\+CNUM:\s*"[^"]*",\s*"([+0-9]+)"',p.stdout)
+ if cnum:info['sim_number']=cnum[1]
+ iccid=re.search(r'\+QCCID:\s*([0-9]{18,22})',p.stdout)
+ if iccid:info['sim_id']=hashlib.sha256(iccid[1].encode()).hexdigest()
+ info['number_status']='SIM 已提供号码' if cnum else 'SIM 未返回本机号码，可手动填写'
  return loc,rows,storage,info
 
 def render(rows):
@@ -166,7 +171,7 @@ def main():
  last_check=None
  recovery_attempt=0
  def publish(state):
-  state.update(mode='notification',checked_at=datetime.now().astimezone().isoformat(),last_scan_at=last_check,cleanup_policy='verified_local_then_delete_me_sm',scan_seconds=None,app_version='1.3.3')
+  state.update(mode='notification',checked_at=datetime.now().astimezone().isoformat(),last_scan_at=last_check,cleanup_policy='verified_local_then_delete_me_sm',scan_seconds=None,app_version='1.3.4')
   atomic(ROOT/'运行状态.json',json.dumps(state,ensure_ascii=False,indent=2))
  request=ROOT/'.manual-check'
  while True:

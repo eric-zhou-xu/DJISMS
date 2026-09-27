@@ -81,8 +81,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         _=add("打开主窗口","macwindow",#selector(showWindow));recentItem=add("查看最新短信","bubble.left",#selector(latest));_=add("设备状态","antenna.radiowaves.left.and.right",#selector(device));_=add("设置…","gearshape",#selector(settings));_=add("帮助","questionmark.circle",#selector(help));menu.addItem(.separator());_=add("退出 DJISMS","power",#selector(quit));item.menu=menu
     }
     func buildWindow(){
-        window=NSWindow(contentRect:NSRect(x:0,y:0,width:760,height:560),styleMask:[.titled,.closable,.miniaturizable,.resizable],backing:.buffered,defer:false)
-        window.title="DJISMS";window.minSize=NSSize(width:620,height:440);window.isReleasedWhenClosed=false;window.center();window.tabbingMode = .disallowed
+        window=NSWindow(contentRect:NSRect(x:0,y:0,width:980,height:760),styleMask:[.titled,.closable,.miniaturizable,.resizable],backing:.buffered,defer:false)
+        window.title="DJISMS";window.minSize=NSSize(width:940,height:720);window.isReleasedWhenClosed=false;window.center();window.tabbingMode = .disallowed
         let root=NSView();window.contentView=root
         sidebar=NSVisualEffectView();sidebar.material = .sidebar;sidebar.blendingMode = .withinWindow;sidebar.state = .followsWindowActiveState;sidebar.translatesAutoresizingMaskIntoConstraints=false;root.addSubview(sidebar)
         content.translatesAutoresizingMaskIntoConstraints=false;root.addSubview(content)
@@ -156,13 +156,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     func unavailable(_ text:String,phase:String="checking"){state=["phase":phase,"connected":false,"ui_failure":text];renderStatus();statusText.stringValue=text}
     func renderStatus(){
         menuTitle.stringValue="DJISMS \(phaseName)";menuNumber.stringValue=simNumber.isEmpty ? (connected ? "本机号码未提供":"本机号码待连接"):simNumber;menuNetwork.stringValue=connected ? "\(carrier) · \(lte) · 信号\(signal)":"连接后自动接收短信";menuDot.contentTintColor=statusColor;item.button?.toolTip="\(menuTitle.stringValue)\n\(menuNumber.stringValue)\n\(menuNetwork.stringValue)";item.button?.setAccessibilityLabel(item.button?.toolTip)
-        footerNumber.stringValue=simNumber.isEmpty ? "本机号码未提供":simNumber;statusText.stringValue=state["ui_failure"] as? String ?? (phase=="safety_stop" ? "接收已暂停，短信档案保留。请查看使用帮助。":phaseName);statusText.textColor=phase=="safety_stop" ? .systemRed:.secondaryLabelColor
-        deviceDot?.contentTintColor=statusColor;fields["connection"]?.stringValue=state["ui_failure"] as? String ?? (receiving ? "已连接，\(phaseName)":phaseName);fields["number"]?.stringValue=simNumber.isEmpty ? "未提供":simNumber;modifyButton?.isEnabled=connected && !simID.isEmpty
+        footerNumber.stringValue=connected ? (simNumber.isEmpty ? "已接通 · 请填写手机号":simNumber):"未接通";statusText.stringValue=state["ui_failure"] as? String ?? (phase=="safety_stop" ? "接收已暂停，短信档案保留。请查看使用帮助。":phaseName);statusText.textColor=phase=="safety_stop" ? .systemRed:.secondaryLabelColor
+        deviceDot?.contentTintColor=statusColor;fields["connection"]?.stringValue=state["ui_failure"] as? String ?? (receiving ? "已连接，\(phaseName)":phaseName);fields["number"]?.stringValue=simNumber.isEmpty ? (state["number_status"] as? String ?? "尚未读取号码"):simNumber;modifyButton?.isEnabled=connected && !simID.isEmpty
         fields["sim"]?.stringValue=connected ? ((state["sim"] as? String ?? "").contains("READY") ? "已插入":"等待就绪"):(phase=="stopped" ? "服务未运行，未读取":"待连接");fields["carrier"]?.stringValue=carrier;fields["type"]?.stringValue=lte == "LTE" ? "4G (LTE)":lte;fields["signal"]?.stringValue=signal;fields["signal"]?.textColor=signal=="强" ? .systemGreen:.labelColor;fields["registration"]?.stringValue=lte=="LTE" ? "已注册（4G）":(phase=="stopped" ? "服务未运行，未核验":"未单独核验")
         fields["cache"]?.stringValue=connected ? storageText(state["ME"] as? [String:Any])+"（补查时）":"待连接"
         fields["smstorage"]?.stringValue=connected ? storageText(state["SM"] as? [String:Any])+"（补查时）":"待连接"
         fields["recovery"]?.stringValue=(state["last_scan_at"] as? String).map{dateText($0)+" · USB \(state["usb_location"] as? String ?? "")"} ?? "尚无成功补查"
-        fields["internet"]?.stringValue="未做外网连通测试";fields["internet"]?.textColor = .secondaryLabelColor;fields["sample"]?.stringValue=dateText(state["status_observed"] as? String)
+        fields["internet"]?.stringValue=state["internet_result"] as? String ?? "暂无此插口的外网测试记录";fields["internet"]?.textColor = .secondaryLabelColor;fields["sample"]?.stringValue=dateText(state["status_observed"] as? String)
         notificationButton?.state=notifications ? .on:.off;purgeButton?.state=autoPurge ? .on:.off;notificationButton?.isEnabled=client.isReady;purgeButton?.isEnabled=false;soundButton?.state=sound ? .on:.off;permissionLabel?.stringValue=permissionGranted ? "系统通知已允许":"系统通知尚未允许"
         recentItem.title="查看最新短信\(unreadCount>0 ? "（\(unreadCount)）":"")"
         if let error=store.error,!errorShown{errorShown=true;alert("界面偏好",error)}
