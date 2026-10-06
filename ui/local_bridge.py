@@ -3,7 +3,7 @@ import json,sys,sqlite3,time,os
 from pathlib import Path
 from datetime import datetime
 os.umask(0o077)
-root=Path.home()/'DJISMS 短信'
+root=Path.home()/'个人程序/DJISMS/DJISMS 短信'
 prefs_path=Path.home()/'Library/Application Support/DJISMS Local/ui-notifications.json'
 try:prefs=json.loads(prefs_path.read_text())
 except (FileNotFoundError,ValueError):prefs={'notifications':True,'seen':[]}

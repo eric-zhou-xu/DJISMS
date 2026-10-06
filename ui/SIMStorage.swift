@@ -1,6 +1,6 @@
 import AppKit
 
-var localSMSBackupURL:URL { FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("DJISMS 短信",isDirectory:true) }
+var localSMSBackupURL:URL { FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("个人程序/DJISMS/DJISMS 短信",isDirectory:true) }
 
 struct SIMRecord {
     let index:Int, status:Int

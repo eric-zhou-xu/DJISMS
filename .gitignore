@@ -5,3 +5,7 @@ __pycache__/
 .DS_Store
 *.sqlite3*
 *.log
+
+!downloads/*.zip
+*.textClipping
+**/DJISMS 短信/
