@@ -9,7 +9,7 @@ def main():
     base = Path(__file__).resolve().parent
     src = base / 'DJISMS.app'
     home = Path.home()
-    folder = home / '个人程序/DJISMS'
+    folder = home / 'Applications/DJISMS'
     dest = folder / 'DJISMS.app'
     uid = str(os.getuid())
     if not Path('/usr/local/bin/python3').exists():
@@ -19,6 +19,11 @@ def main():
     if not src.is_dir():
         raise SystemExit('请从完整安装包中运行安装程序')
     subprocess.run(['codesign', '--verify', '--deep', '--strict', str(src)], check=True)
+    previous = home / '个人程序/DJISMS'
+    if previous.is_dir() and not previous.is_symlink() and not folder.exists():
+        folder.parent.mkdir(parents=True, exist_ok=True)
+        previous.rename(folder)
+        previous.symlink_to(folder, target_is_directory=True)
     folder.mkdir(parents=True, exist_ok=True)
     backup = home / 'Library/Application Support/DJISMS App Backups'
     backup.mkdir(parents=True, exist_ok=True, mode=0o700)

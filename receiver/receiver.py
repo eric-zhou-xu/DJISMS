@@ -96,7 +96,7 @@ def render(rows):
 
 
 import sqlite3,fcntl,select,signal
-ROOT=Path.home()/'个人程序/DJISMS/DJISMS 短信'
+ROOT=Path.home()/'Applications/DJISMS/DJISMS 短信'
 def atomic(path,text):
  data=text.encode('utf-8')
  if path.exists() and path.read_bytes()==data:return
@@ -171,7 +171,7 @@ def main():
  last_check=None
  recovery_attempt=0
  def publish(state):
-  state.update(mode='notification',checked_at=datetime.now().astimezone().isoformat(),last_scan_at=last_check,cleanup_policy='verified_local_then_delete_me_sm',scan_seconds=None,app_version='1.3.6')
+  state.update(mode='notification',checked_at=datetime.now().astimezone().isoformat(),last_scan_at=last_check,cleanup_policy='verified_local_then_delete_me_sm',scan_seconds=None,app_version='1.3.7')
   atomic(ROOT/'运行状态.json',json.dumps(state,ensure_ascii=False,indent=2))
  request=ROOT/'.manual-check'
  while True:

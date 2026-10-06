@@ -7,7 +7,7 @@ import fcntl, json, os, shutil, sqlite3, tempfile
 
 def migrate_archive(home, render):
     home = Path(home)
-    target = home / '个人程序/DJISMS/DJISMS 短信'
+    target = home / 'Applications/DJISMS/DJISMS 短信'
     legacy = home / 'DJISMS 短信'
     target.mkdir(parents=True, exist_ok=True, mode=0o700)
     target.chmod(0o700)

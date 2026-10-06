@@ -19,7 +19,7 @@ def archive(path, rows, deleted=()):
 class MigrationTest(unittest.TestCase):
  def test_merge_deduplicates_and_respects_deletions(self):
   with tempfile.TemporaryDirectory() as name:
-   home=Path(name); old=home/'DJISMS 短信'; new=home/'个人程序/DJISMS/DJISMS 短信'
+   home=Path(name); old=home/'DJISMS 短信'; new=home/'Applications/DJISMS/DJISMS 短信'
    archive(old,[('a','AA'),('b','BB')],['c']);archive(new,[('a','AA'),('c','CC')],['b'])
    (old/'网络测试.json').write_text('{}')
    target=m.migrate_archive(home,r.render)
@@ -32,7 +32,7 @@ class MigrationTest(unittest.TestCase):
    self.assertEqual(m.migrate_archive(home,r.render),target)
  def test_conflicting_pdu_leaves_originals_intact(self):
   with tempfile.TemporaryDirectory() as name:
-   home=Path(name); old=home/'DJISMS 短信'; new=home/'个人程序/DJISMS/DJISMS 短信'
+   home=Path(name); old=home/'DJISMS 短信'; new=home/'Applications/DJISMS/DJISMS 短信'
    archive(old,[('a','AA')]);archive(new,[('a','BB')])
    original=(new/'短信.sqlite3').read_bytes()
    with self.assertRaisesRegex(ValueError,'PDU'):m.migrate_archive(home,r.render)
