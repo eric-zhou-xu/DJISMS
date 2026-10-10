@@ -1,5 +1,5 @@
 """Local archive presentation and deletion bridge; USB ownership remains with local.djisms.receiver."""
-import json,sys,sqlite3,time,os
+import json,sys,sqlite3,time,os,uuid
 from pathlib import Path
 from datetime import datetime
 os.umask(0o077)
@@ -7,7 +7,7 @@ root=Path.home()/'Applications/DJISMS/DJISMS 短信'
 prefs_path=Path.home()/'Library/Application Support/DJISMS Local/ui-notifications.json'
 try:prefs=json.loads(prefs_path.read_text())
 except (FileNotFoundError,ValueError):prefs={'notifications':True,'seen':[]}
-seen=set(prefs.get('seen',[]));initial=True;last_ids=None
+seen=set(prefs.get('seen',[]));initial=True;last_ids=None;clear_preview=None
 
 def emit(v):print(json.dumps(dict(version=1,**v),ensure_ascii=False),flush=True)
 def messages():
@@ -33,6 +33,23 @@ for line in sys.stdin:
    if initial:seen.update(ids);save();initial=False
    if last_ids is not None and ids!=last_ids:emit({'event':'history_changed'})
    last_ids=ids
+  elif method=='clear_preview':
+   import importlib.util
+   spec=importlib.util.spec_from_file_location('djisms_archive',Path(__file__).with_name('receiver.py'));module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+   with sqlite3.connect(root/'短信.sqlite3',timeout=30) as writable:
+    module.retry_clear(writable)
+   prefs=json.loads(prefs_path.read_text()) if prefs_path.exists() else prefs;seen=set(prefs.get('seen',[]))
+   with sqlite3.connect('file:'+str(root/'短信.sqlite3')+'?mode=ro',uri=True) as db:
+    ids=[r[0] for r in db.execute('SELECT id FROM messages')]
+   clear_preview={'token':uuid.uuid4().hex,'ids':ids,'expires':time.monotonic()+300}
+   data={'token':clear_preview['token'],'count':len(ids),'path':str(root)}
+  elif method=='clear_history':
+   if clear_preview is None or q.get('token')!=clear_preview['token'] or time.monotonic()>clear_preview['expires']:raise ValueError('Preview expired')
+   import importlib.util
+   spec=importlib.util.spec_from_file_location('djisms_archive',Path(__file__).with_name('receiver.py'));module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+   with sqlite3.connect(root/'短信.sqlite3',timeout=30) as db:
+    db.execute('PRAGMA synchronous=FULL');data=module.clear_history(db,clear_preview['ids'],clear_preview['token'])
+   seen.difference_update(clear_preview['ids']);prefs['seen']=sorted(seen);save();emit({'event':'history_changed'})
   elif method=='delete_local':
    import importlib.util
    spec=importlib.util.spec_from_file_location('djisms_archive',Path(__file__).with_name('receiver.py'));module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
@@ -51,4 +68,4 @@ for line in sys.stdin:
   elif method=='power':pass
   else:raise ValueError('unsupported request')
   emit({'id':q.get('id'),'data':data})
- except Exception:emit({'id':q.get('id') if isinstance(q,dict) else None,'error':'本地短信读取暂不可用；原件未改动'})
+ except Exception:emit({'id':q.get('id') if isinstance(q,dict) else None,'error':'清理未能完成；请重试以核对数据库和收件箱，部分记录可能已删除' if method=='clear_history' else '本地短信读取暂不可用；原件未改动'})

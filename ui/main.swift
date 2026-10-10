@@ -6,7 +6,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     var client=CoreClient()
     var makeCoreClient:()->CoreClient = {CoreClient()}
     var runSIM:([String:Any],@escaping([String:Any])->Void)->Void = {SIMHelper.run($0,completion:$1)}
-    var storageBusy=false,storageChecked=false
+    var storageBusy=false,storageChecked=false,clearBusy=false
+    var clearButton:NSButton?
     var simFeatureFailure:String?
     var pendingStorageLaunch:(()->Void)?
     var simSnapshot:[String:Any]?
@@ -136,8 +137,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         let login=checkbox("后台接收登录时自动启动",true,#selector(noop));login.isEnabled=false;loginButton=login
         let notification=checkbox("收到新短信时显示系统通知",notifications,#selector(preferencesChanged));notificationButton=notification
         let soundToggle=checkbox("播放提示音",sound,#selector(soundChanged(_:)));soundButton=soundToggle
-        let permanent=checkbox("永久保存在这台 Mac（不可关闭）",true,#selector(noop));permanent.isEnabled=false
-        let purge=checkbox("自动清理模块副本（当前关闭，保留原件）",autoPurge,#selector(preferencesChanged));purgeButton=purge
+        let permanent=checkbox("保存在这台 Mac，直到手动删除",true,#selector(noop));permanent.isEnabled=false
+        let purge=checkbox("保存校验后清理模块与 SIM 副本",autoPurge,#selector(preferencesChanged));purgeButton=purge
         let grid=NSGridView();grid.rowSpacing=16;grid.columnSpacing=20;grid.xPlacement = .leading;grid.yPlacement = .top
         grid.addRow(with:[label("启动",13,.medium),login]);grid.addRow(with:[label("通知",13,.medium),stack([notification,soundToggle],spacing:8)]);grid.addRow(with:[label("短信",13,.medium),stack([permanent,purge],spacing:8)])
         let appearance=NSPopUpButton();appearance.addItems(withTitles:["跟随系统","浅色","深色"]);appearance.selectItem(at:["system","light","dark"].firstIndex(of:store.data.appearance) ?? 0);appearance.target=self;appearance.action=#selector(appearanceChanged(_:));appearance.setAccessibilityLabel("外观");grid.addRow(with:[label("外观",13,.medium),appearance])
@@ -145,13 +146,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         let permission=label("",11,.regular,.secondaryLabelColor);permissionLabel=permission
         let links=stack([permission,button("通知设置…",#selector(notificationSettings))],vertical:false,spacing:12)
         let note=NSTextField(wrappingLabelWithString:"所有短信完整保存在本地，不会上传到任何第三方服务。");note.font = .systemFont(ofSize:11);note.textColor = .secondaryLabelColor
-        let v=stack([grid,links,note],spacing:20);pin(v,card,18);note.widthAnchor.constraint(equalTo:v.widthAnchor).isActive=true
+        let clear=button("清空现有记录…",#selector(clearHistory));clearButton=clear;clear.isEnabled=client.isReady && !clearBusy
+        let clearNote=NSTextField(wrappingLabelWithString:"删除当前本机短信列表、数据库正文和收件箱文件中的记录，无法撤销。保留接收设置；之后新收到的短信继续保存。外部导出及旧备份需另行处理。");clearNote.font = .systemFont(ofSize:11);clearNote.textColor = .secondaryLabelColor
+        let v=stack([grid,links,note,clear,clearNote],spacing:20);clearNote.widthAnchor.constraint(equalTo:v.widthAnchor).isActive=true;pin(v,card,18);note.widthAnchor.constraint(equalTo:v.widthAnchor).isActive=true
     }
     func buildAbout(){
         let mark=NSImageView();mark.image=Bundle.main.url(forResource:"AppMark",withExtension:"png").flatMap{NSImage(contentsOf:$0)};mark.translatesAutoresizingMaskIntoConstraints=false;NSLayoutConstraint.activate([mark.widthAnchor.constraint(equalToConstant:64),mark.heightAnchor.constraint(equalToConstant:64)])
         let v=stack([mark,label("DJISMS",24,.bold),label("版本 \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "未知") · 通知接收版",13),label("只接收短信 · 本地保存 · 简单可靠",13),label("© 2026 DJISMS. All rights reserved.",11,.regular,.secondaryLabelColor),label(build,10,.regular,.tertiaryLabelColor),button("使用帮助",#selector(help))],spacing:12);v.alignment = .centerX;v.translatesAutoresizingMaskIntoConstraints=false;content.addSubview(v);NSLayoutConstraint.activate([v.centerXAnchor.constraint(equalTo:content.centerXAnchor),v.centerYAnchor.constraint(equalTo:content.centerYAnchor),v.leadingAnchor.constraint(greaterThanOrEqualTo:content.leadingAnchor,constant:18),v.trailingAnchor.constraint(lessThanOrEqualTo:content.trailingAnchor,constant:-18)])
     }
-    func poll(){guard client.isReady,!shuttingDown,!polling else{return};polling=true;client.request("status"){[weak self] response in guard let self=self else{return};self.polling=false;if response["error"] != nil{self.unavailable("接收状态暂时无法确认，正在等待服务恢复。");return};guard let data=response["data"] as? [String:Any] else{return};if let s=data["state"] as? [String:Any]{self.state=s};if let p=data["preferences"] as? [String:Any]{self.notifications=p["notifications"] as? Bool ?? true;self.autoPurge=p["auto_purge"] as? Bool ?? true};self.renderStatus();self.fetchNotifications()}}
+    func poll(){guard client.isReady,!shuttingDown,!clearBusy,!polling else{return};polling=true;client.request("status"){[weak self] response in guard let self=self else{return};self.polling=false;if response["error"] != nil{self.unavailable("接收状态暂时无法确认，正在等待服务恢复。");return};guard let data=response["data"] as? [String:Any] else{return};if let s=data["state"] as? [String:Any]{self.state=s};if let p=data["preferences"] as? [String:Any]{self.notifications=p["notifications"] as? Bool ?? true;self.autoPurge=p["auto_purge"] as? Bool ?? true};self.renderStatus();self.fetchNotifications()}}
     func handle(_ event:[String:Any]){if event["error"] != nil{unavailable(event["error"] as? String ?? "接收服务需要检查。",phase:"stopped");return};switch event["event"] as? String{case "initializing":unavailable("正在校验永久档案，完成后自动接收…",phase:"starting");case "hello":refreshHistory();poll();case "state":if let s=event["data"] as? [String:Any]{state=s;renderStatus()};case "history_changed":scheduleHistory();case "stopped":if shuttingDown{NSApp.reply(toApplicationShouldTerminate:true)};default:break}}
     func unavailable(_ text:String,phase:String="checking"){state=["phase":phase,"connected":false,"ui_failure":text];renderStatus();statusText.stringValue=text}
     func renderStatus(){
@@ -164,12 +167,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         fields["recovery"]?.stringValue=(state["last_scan_at"] as? String).map{dateText($0)+" · USB \(state["usb_location"] as? String ?? "")"} ?? "尚无成功补查"
         fields["internet"]?.stringValue=state["internet_result"] as? String ?? "暂无此插口的外网测试记录";fields["internet"]?.textColor = .secondaryLabelColor;fields["sample"]?.stringValue=dateText(state["status_observed"] as? String)
         notificationButton?.state=notifications ? .on:.off;purgeButton?.state=autoPurge ? .on:.off;notificationButton?.isEnabled=client.isReady;purgeButton?.isEnabled=false;soundButton?.state=sound ? .on:.off;permissionLabel?.stringValue=permissionGranted ? "系统通知已允许":"系统通知尚未允许"
+        clearButton?.isEnabled=client.isReady && !clearBusy
         recentItem.title="查看最新短信\(unreadCount>0 ? "（\(unreadCount)）":"")"
         if let error=store.error,!errorShown{errorShown=true;alert("界面偏好",error)}
     }
     var unreadCount:Int {messages.filter{!store.data.read.contains($0.id)}.count}
     func scheduleHistory(){guard !historyScheduled else{return};historyScheduled=true;DispatchQueue.main.asyncAfter(deadline:.now()+0.35){[weak self] in self?.historyScheduled=false;self?.refreshHistory()}}
-    func refreshHistory(append:Bool=false){guard client.isReady,!shuttingDown else{return};generation+=1;let g=generation,query=search.stringValue;loading=true;let offset=append ? messages.count:0
+    func refreshHistory(append:Bool=false){guard client.isReady,!shuttingDown,!clearBusy else{return};generation+=1;let g=generation,query=search.stringValue;loading=true;let offset=append ? messages.count:0
         client.request("messages",["search":query,"limit":200,"offset":offset]){[weak self] response in guard let self=self,self.generation==g else{return};self.loading=false;guard let raw=response["data"],let bytes=try? JSONSerialization.data(withJSONObject:raw),let rows=try? JSONDecoder().decode([SMS].self,from:bytes) else{self.count.stringValue="短信暂时无法读取，永久档案保留。";return};self.store.observe(rows);self.messages=append ? self.messages+rows:rows;self.more=rows.count==200;self.applyFilter();self.renderStatus()}}
     func controlTextDidChange(_ obj:Notification){scheduleHistory()}
     @objc func loadMore(){refreshHistory(append:true)}
@@ -180,6 +184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     @objc func openSelected(){let row=table.selectedRow;guard row>=0,row<visible.count else{return};open(visible[row])}
     func open(_ m:SMS){client.request("message",["message_id":m.id]){[weak self] response in guard let self=self,let raw=response["data"],let bytes=try? JSONSerialization.data(withJSONObject:raw),let full=try? JSONDecoder().decode(SMS.self,from:bytes) else{return};self.showDetail(full)} }
     func showDetail(_ m:SMS){
+        guard !clearBusy else{return}
         currentMessage=m;store.data.read.insert(m.id);store.save();applyFilter();renderStatus()
         if detailWindow==nil{let w=NSWindow(contentRect:NSRect(x:0,y:0,width:438,height:590),styleMask:[.titled,.closable,.resizable,.miniaturizable],backing:.buffered,defer:false);w.minSize=NSSize(width:390,height:460);w.title="DJISMS";w.isReleasedWhenClosed=false;w.center();detailWindow=w}
         let root=DetailRoot();detailWindow!.contentView=root
@@ -196,30 +201,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         NSLayoutConstraint.activate([header.leadingAnchor.constraint(equalTo:root.leadingAnchor,constant:14),header.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-14),header.topAnchor.constraint(equalTo:root.topAnchor,constant:14),header.heightAnchor.constraint(greaterThanOrEqualToConstant:42),when.topAnchor.constraint(equalTo:header.bottomAnchor,constant:19),when.centerXAnchor.constraint(equalTo:root.centerXAnchor),bubble.leadingAnchor.constraint(equalTo:root.leadingAnchor,constant:25),bubble.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-25),bubble.topAnchor.constraint(equalTo:when.bottomAnchor,constant:19),bubble.bottomAnchor.constraint(equalTo:grid.topAnchor,constant:-24),bubble.heightAnchor.constraint(greaterThanOrEqualToConstant:90),grid.leadingAnchor.constraint(equalTo:root.leadingAnchor,constant:25),grid.trailingAnchor.constraint(lessThanOrEqualTo:root.trailingAnchor,constant:-18),grid.bottomAnchor.constraint(lessThanOrEqualTo:root.bottomAnchor,constant:-25)])
         detailWindow?.makeKeyAndOrderFront(nil);NSApp.activate(ignoringOtherApps:true)
     }
-    @objc func markUnread(){guard let m=currentMessage else{return};store.data.read.remove(m.id);store.save();detailMark?.title="已标记为未读";detailMark?.isEnabled=false;applyFilter();renderStatus()}
+    @objc func markUnread(){guard !clearBusy,let m=currentMessage else{return};store.data.read.remove(m.id);store.save();detailMark?.title="已标记为未读";detailMark?.isEnabled=false;applyFilter();renderStatus()}
     @objc func closeDetail(){detailWindow?.close();showWindow()}
-    @objc func copyDetail(_ sender:NSPopUpButton){guard let m=currentMessage else{return};if sender.indexOfSelectedItem==3{deleteLocalMessage();return};let text=sender.indexOfSelectedItem==1 ? m.sender:m.body;NSPasteboard.general.clearContents();NSPasteboard.general.setString(text,forType:.string)}
-    @objc func editNumber(){guard connected,!simID.isEmpty else{return};let id=simID;let panel=NSAlert();panel.messageText="修改本机显示号码";panel.informativeText="只修改这张 SIM 在 DJISMS 中的显示号码。此前短信的接收号码记录保持不变。";let input=NSTextField(string:simNumber);input.frame=NSRect(x:0,y:0,width:280,height:26);input.placeholderString="例如 +86 138 1234 5678";panel.accessoryView=input;panel.addButton(withTitle:"保存");panel.addButton(withTitle:"取消");panel.beginSheetModal(for:window){[weak self] result in guard let self=self,result == .alertFirstButtonReturn else{return};let v=input.stringValue.trimmingCharacters(in:.whitespacesAndNewlines);guard !v.isEmpty,v.count<=32,v.unicodeScalars.allSatisfy({CharacterSet(charactersIn:"+0123456789 -()").contains($0)}) else{self.alert("号码格式不正确","请填写不超过 32 个字符的电话号码。");return};self.store.data.numbers[id]=v;self.store.save();self.renderStatus()}}
+    @objc func copyDetail(_ sender:NSPopUpButton){guard !clearBusy,let m=currentMessage else{return};if sender.indexOfSelectedItem==3{deleteLocalMessage();return};let text=sender.indexOfSelectedItem==1 ? m.sender:m.body;NSPasteboard.general.clearContents();NSPasteboard.general.setString(text,forType:.string)}
+    @objc func editNumber(){guard !clearBusy,connected,!simID.isEmpty else{return};let id=simID;let panel=NSAlert();panel.messageText="修改本机显示号码";panel.informativeText="只修改这张 SIM 在 DJISMS 中的显示号码。此前短信的接收号码记录保持不变。";let input=NSTextField(string:simNumber);input.frame=NSRect(x:0,y:0,width:280,height:26);input.placeholderString="例如 +86 138 1234 5678";panel.accessoryView=input;panel.addButton(withTitle:"保存");panel.addButton(withTitle:"取消");panel.beginSheetModal(for:window){[weak self] result in guard let self=self,!self.clearBusy,result == .alertFirstButtonReturn else{return};let v=input.stringValue.trimmingCharacters(in:.whitespacesAndNewlines);guard !v.isEmpty,v.count<=32,v.unicodeScalars.allSatisfy({CharacterSet(charactersIn:"+0123456789 -()").contains($0)}) else{self.alert("号码格式不正确","请填写不超过 32 个字符的电话号码。");return};self.store.data.numbers[id]=v;self.store.save();self.renderStatus()}}
+    @objc func clearHistory(){
+        guard client.isReady,!clearBusy,!storageBusy,notificationInFlight.isEmpty,window.attachedSheet==nil else{return}
+        clearBusy=true;generation+=1;renderStatus()
+        client.request("clear_preview"){[weak self] response in
+            guard let self=self else{return}
+            guard let data=response["data"] as? [String:Any],let token=data["token"] as? String,let count=data["count"] as? Int else{self.finishClear();self.alert("无法核对记录","尚未执行清空，请稍后重试。");return}
+            guard count>0 else{self.finishClear();self.alert("没有现有记录","本机短信数据库已为空。");return}
+            let a=NSAlert();a.messageText="永久清空这 \(count) 条现有记录？";a.alertStyle = .warning
+            a.informativeText="将同时删除软件中的短信记录，以及以下目录的数据库正文和收件箱内容：\n\(data["path"] as? String ?? "")\n\n无法撤销。保留接收设置和应用；确认期间新收到的短信不会删除。外部导出及旧备份不在此范围。不会向模块或 SIM 发出删除命令；同一原件不会重新导入。"
+            a.addButton(withTitle:"取消");a.addButton(withTitle:"永久清空")
+            guard a.runModal() == .alertSecondButtonReturn else{self.finishClear();return}
+            self.client.request("clear_history",["token":token]){[weak self] result in
+                guard let self=self else{return}
+                self.closeDetail();self.currentMessage=nil;self.messages=[];self.visible=[];self.more=false;self.table.reloadData()
+                self.store.reload();self.finishClear()
+                if let error=result["error"] as? String{self.alert("清空尚未确认完成",error)}
+                else{UNUserNotificationCenter.current().removeAllDeliveredNotifications();UNUserNotificationCenter.current().removeAllPendingNotificationRequests();self.alert("现有记录已清空","已从本机数据库及收件箱删除 \(count) 条记录。之后的新短信继续正常接收。")}
+            }
+        }
+    }
+    func finishClear(){store.reload();clearBusy=false;renderStatus();refreshHistory();poll()}
     func deleteLocalMessage(){
-        guard let m=currentMessage else{return}
+        guard !clearBusy,let m=currentMessage else{return}
         let confirmation=NSAlert();confirmation.messageText="删除这条本机短信？";confirmation.informativeText="将删除 Mac 数据库及本地收件箱中的这条短信，无法撤销。不会因此向模块或 SIM 发送删除命令；此前自动清理的原件也无法恢复。同一原件以后不会重新导入。";confirmation.alertStyle = .warning;confirmation.addButton(withTitle:"取消");confirmation.addButton(withTitle:"删除")
         guard confirmation.runModal() == .alertSecondButtonReturn else{return}
         client.request("delete_local",["message_id":m.id]){[weak self] response in
             guard let self=self else{return}
             if response["error"] != nil{self.alert("删除未完成","请重试；若数据库已删除，重新刷新后确认收件箱状态。");return}
-            self.closeDetail();self.currentMessage=nil;self.store.data.read.remove(m.id);self.store.save();self.refreshHistory();self.poll()
+            guard !self.clearBusy else{return};self.closeDetail();self.currentMessage=nil;self.store.data.read.remove(m.id);self.store.save();self.refreshHistory();self.poll()
         }
     }
     @objc func refreshDevice(){if !client.isRunning{startReceiver()}else{client.request("rescan"){[weak self] _ in self?.poll()}}}
-    @objc func preferencesChanged(){guard client.isReady else{return};let n=notificationButton?.state == .on,p=purgeButton?.state == .on;notificationButton?.isEnabled=false;purgeButton?.isEnabled=false;client.request("preferences",["preferences":["notifications":n,"auto_purge":p]]){[weak self] r in if r["error"] != nil{self?.alert("设置未保存","接收服务暂未确认设置，请稍后再试。")};self?.poll()};if n{checkPermission(request:true)}}
-    @objc func soundChanged(_ sender:NSButton){sound=sender.state == .on;store.data.sound=sound;store.save()}
+    @objc func preferencesChanged(){guard client.isReady,!clearBusy else{return};let n=notificationButton?.state == .on,p=purgeButton?.state == .on;notificationButton?.isEnabled=false;purgeButton?.isEnabled=false;client.request("preferences",["preferences":["notifications":n,"auto_purge":p]]){[weak self] r in if r["error"] != nil{self?.alert("设置未保存","接收服务暂未确认设置，请稍后再试。")};self?.poll()};if n{checkPermission(request:true)}}
+    @objc func soundChanged(_ sender:NSButton){guard !clearBusy else{sender.state=sound ? .on:.off;return};sound=sender.state == .on;store.data.sound=sound;store.save()}
     @objc func loginChanged(_ sender:NSButton){do{if sender.state == .on{try SMAppService.mainApp.register()}else{try SMAppService.mainApp.unregister()}}catch{sender.state=SMAppService.mainApp.status == .enabled ? .on:.off;alert("登录启动未能设置","请在系统设置的登录项中允许 DJISMS，或稍后再试。")}}
-    @objc func appearanceChanged(_ sender:NSPopUpButton){store.data.appearance=["system","light","dark"][sender.indexOfSelectedItem];store.save();applyAppearance()}
+    @objc func appearanceChanged(_ sender:NSPopUpButton){guard !clearBusy else{sender.selectItem(at:["system","light","dark"].firstIndex(of:store.data.appearance) ?? 0);return};store.data.appearance=["system","light","dark"][sender.indexOfSelectedItem];store.save();applyAppearance()}
     func applyAppearance(){NSApp.appearance=store.data.appearance=="light" ? NSAppearance(named:.aqua):store.data.appearance=="dark" ? NSAppearance(named:.darkAqua):nil}
     @objc func openLocalInbox(){NSWorkspace.shared.open(localSMSBackupURL)}
     @objc func noop(){}
     func checkPermission(request:Bool){let center=UNUserNotificationCenter.current();center.getNotificationSettings{[weak self] s in if s.authorizationStatus == .notDetermined && request{center.requestAuthorization(options:[.alert,.sound,.badge]){_,_ in self?.checkPermission(request:false)};return};DispatchQueue.main.async{self?.permissionKnown=true;self?.permissionGranted=s.authorizationStatus == .authorized || s.authorizationStatus == .provisional;self?.renderStatus()}}}
-    func fetchNotifications(){guard permissionKnown,client.isReady,!shuttingDown else{return};client.request("notifications"){[weak self] response in guard let self=self,let raw=response["data"],let bytes=try? JSONSerialization.data(withJSONObject:raw),let list=try? JSONDecoder().decode([SMS].self,from:bytes) else{return};for m in list where !self.notificationInFlight.contains(m.id){self.notificationInFlight.insert(m.id);self.store.markNew([m]);if !self.notifications || !self.permissionGranted{self.ack(m.id,self.notifications ? "denied":"disabled","");continue};let content=UNMutableNotificationContent();content.title="DJISMS · \(m.sender.isEmpty ? "新短信":m.sender)";content.body=String(m.body.prefix(160));if self.sound{content.sound = .default};content.userInfo=["message_id":m.id];let request=UNNotificationRequest(identifier:"djisms-"+m.id,content:content,trigger:nil);UNUserNotificationCenter.current().add(request){error in DispatchQueue.main.async{self.ack(m.id,error==nil ? "submitted":"failed",error?.localizedDescription ?? "")}}}}}
+    func fetchNotifications(){guard permissionKnown,client.isReady,!shuttingDown,!clearBusy else{return};client.request("notifications"){[weak self] response in guard let self=self,!self.clearBusy,let raw=response["data"],let bytes=try? JSONSerialization.data(withJSONObject:raw),let list=try? JSONDecoder().decode([SMS].self,from:bytes) else{return};for m in list where !self.notificationInFlight.contains(m.id){self.notificationInFlight.insert(m.id);self.store.markNew([m]);if !self.notifications || !self.permissionGranted{self.ack(m.id,self.notifications ? "denied":"disabled","");continue};let content=UNMutableNotificationContent();content.title="DJISMS · \(m.sender.isEmpty ? "新短信":m.sender)";content.body=String(m.body.prefix(160));if self.sound{content.sound = .default};content.userInfo=["message_id":m.id];let request=UNNotificationRequest(identifier:"djisms-"+m.id,content:content,trigger:nil);UNUserNotificationCenter.current().add(request){error in DispatchQueue.main.async{self.ack(m.id,error==nil ? "submitted":"failed",error?.localizedDescription ?? "")}}}}}
     func ack(_ id:String,_ result:String,_ detail:String){client.request("notification_result",["message_id":id,"result":result,"detail":String(detail.prefix(500))]){[weak self] _ in self?.notificationInFlight.remove(id);self?.scheduleHistory()}}
     func userNotificationCenter(_ center:UNUserNotificationCenter,willPresent notification:UNNotification,withCompletionHandler completionHandler:@escaping(UNNotificationPresentationOptions)->Void){completionHandler(sound ? [.banner,.list,.sound]:[.banner,.list])}
     func userNotificationCenter(_ center:UNUserNotificationCenter,didReceive response:UNNotificationResponse,withCompletionHandler completionHandler:@escaping()->Void){DispatchQueue.main.async{self.showWindow();self.showPage(0);if let id=response.notification.request.content.userInfo["message_id"] as? String{self.client.request("message",["message_id":id]){r in if let raw=r["data"],let data=try? JSONSerialization.data(withJSONObject:raw),let m=try? JSONDecoder().decode(SMS.self,from:data){self.showDetail(m)}}}};completionHandler()}
@@ -234,7 +260,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     @objc func help(){alert("DJISMS 使用帮助","连接 DJI 4G 模块后自动接收短信。\n\n所有短信永久保存在这台 Mac。保存校验后清理模块及 SIM 原件。关闭窗口或退出界面后，后台仍监听新短信通知。可使用“立即补查”。\n\n显示号码可在设备状态中修改；历史短信保留原接收记录。旧档案没有记录接收卡时会显示“未记录”。\n\n连接中断或 Mac 唤醒后会自动恢复。如果出现“接收已暂停”，请保留档案，退出后重新打开；若仍暂停，请联系支持进行检查。\n\n仅接收短信，不提供发送或回复。")}
     func alert(_ title:String,_ message:String){let a=NSAlert();a.messageText=title;a.informativeText=message;a.addButton(withTitle:"好");if let w=window,w.attachedSheet==nil{a.beginSheetModal(for:w)}else{a.runModal()}}
     @objc func quit(){NSApp.terminate(nil)}
-    func applicationShouldTerminate(_ sender:NSApplication)->NSApplication.TerminateReply{if storageBusy{alert("正在完成 SIM 操作","请等待存储恢复及审计完成后退出。");return .terminateCancel};if !client.isRunning{return .terminateNow};if shuttingDown{return .terminateLater};shuttingDown=true;timer?.invalidate();statusText.stringValue="正在安全停止接收…";client.request("shutdown");return .terminateLater}
+    func applicationShouldTerminate(_ sender:NSApplication)->NSApplication.TerminateReply{if clearBusy{alert("正在核对或清空记录","请等待操作完成后退出。");return .terminateCancel};if storageBusy{alert("正在完成 SIM 操作","请等待存储恢复及审计完成后退出。");return .terminateCancel};if !client.isRunning{return .terminateNow};if shuttingDown{return .terminateLater};shuttingDown=true;timer?.invalidate();statusText.stringValue="正在安全停止接收…";client.request("shutdown");return .terminateLater}
 }
 let app=NSApplication.shared
 let delegate=AppDelegate()

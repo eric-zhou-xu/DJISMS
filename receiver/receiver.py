@@ -113,6 +113,60 @@ def archive_lock(fn):
    return fn(db,*args)
  return wrapped
 
+# The journal contains only IDs, never SMS bodies. Incomplete cross-file cleanup
+# is retried under the same archive lock before the receiver can save more rows.
+UI_ROOT=Path.home()/'Library/Application Support/DJISMS-UI'
+NOTIFICATION_PREFS=Path.home()/'Library/Application Support/DJISMS Local/ui-notifications.json'
+def history_metadata(ids,write=False):
+ for path,keys in [(UI_ROOT/'presentation.json',('read','known','stamps')),(NOTIFICATION_PREFS,('seen',))]:
+  if not path.exists():continue
+  value=json.loads(path.read_text())
+  if not isinstance(value,dict):raise ValueError('Invalid presentation preferences')
+  for key in keys:
+   if key in value:
+    if isinstance(value[key],dict):value[key]={k:v for k,v in value[key].items() if k not in ids}
+    elif isinstance(value[key],list):value[key]=[v for v in value[key] if v not in ids]
+    else:raise ValueError('Invalid history metadata')
+  if write:atomic(path,json.dumps(value,ensure_ascii=False))
+
+def recover_clear(db):
+ path=ROOT/'.clear-history.json'
+ if not path.exists():return None
+ job=json.loads(path.read_text());ids=job['ids']
+ if not all(isinstance(i,str) and re.fullmatch('[0-9a-f]{64}',i) for i in ids):raise ValueError('Invalid clear journal')
+ db.execute('PRAGMA secure_delete=ON')
+ with db:
+  db.executemany('INSERT OR IGNORE INTO local_deleted(id) VALUES (?)',[(i,) for i in ids])
+  db.executemany('DELETE FROM messages WHERE id=?',[(i,) for i in ids])
+  if db.execute("SELECT 1 FROM sqlite_master WHERE name='module_cleanup'").fetchone():
+   db.executemany('DELETE FROM module_cleanup WHERE message_id=?',[(i,) for i in ids])
+ rows=[json.loads(r[0]) for r in db.execute('SELECT data FROM messages')]
+ atomic(ROOT/'收件箱.txt',render(rows))
+ history_metadata(set(ids),write=True)
+ # Remove obsolete archive temp files; no external backups or user exports.
+ for name in ('.收件箱.txt.tmp',):
+  (ROOT/name).unlink(missing_ok=True)
+ db.execute('PRAGMA wal_checkpoint(TRUNCATE)');db.execute('VACUUM')
+ receipt={'operation':job['operation'],'deleted':job['count'],'remaining':len(rows)}
+ atomic(ROOT/'.clear-history-result.json',json.dumps(receipt))
+ path.unlink()
+ return receipt
+
+@archive_lock
+def clear_history(db,ids,operation):
+ if not isinstance(operation,str) or not re.fullmatch('[0-9a-f]{32}',operation):raise ValueError('Invalid operation')
+ if not isinstance(ids,list) or not all(isinstance(i,str) and re.fullmatch('[0-9a-f]{64}',i) for i in ids):raise ValueError('Invalid IDs')
+ previous=ROOT/'.clear-history-result.json'
+ if previous.exists():
+  receipt=json.loads(previous.read_text())
+  if receipt.get('operation')==operation:return receipt
+ recovered=recover_clear(db)
+ if recovered and recovered['operation']==operation:return recovered
+ history_metadata(set(ids)) # Validate preferences before any irreversible deletion.
+ present={r[0] for r in db.execute('SELECT id FROM messages')}
+ atomic(ROOT/'.clear-history.json',json.dumps({'operation':operation,'ids':ids,'count':len(present.intersection(ids))}))
+ return recover_clear(db)
+
 @archive_lock
 def delete_local(db,message_id):
  if not isinstance(message_id,str) or not re.fullmatch('[0-9a-f]{64}',message_id):raise ValueError('Invalid message id')
@@ -125,6 +179,7 @@ def delete_local(db,message_id):
 
 @archive_lock
 def save_rows(db,rows):
+ recover_clear(db)
  with db:
   for row in rows:
    if db.execute('SELECT 1 FROM local_deleted WHERE id=?',(row['id'],)).fetchone():continue
@@ -145,6 +200,7 @@ def save_rows(db,rows):
  atomic(ROOT/'收件箱.txt',render(allrows))
  return len(allrows)
 
+@archive_lock
 def delete_saved(db,location,rows):
  deleted=0
  for row in rows:
@@ -162,12 +218,17 @@ def delete_saved(db,location,rows):
   deleted+=1
  return deleted
 
+@archive_lock
+def retry_clear(db):
+ return recover_clear(db)
+
 def main():
  def shutdown(signum,frame):raise SystemExit(0)
  signal.signal(signal.SIGTERM,shutdown);signal.signal(signal.SIGINT,shutdown)
  os.umask(0o077);ROOT.mkdir(mode=0o700,exist_ok=True)
  lock=open(ROOT/'.receiver.lock','w');fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
  db=sqlite3.connect(ROOT/'短信.sqlite3');db.execute('PRAGMA synchronous=FULL');db.execute('CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY,data TEXT NOT NULL)');db.execute('CREATE TABLE IF NOT EXISTS module_cleanup(id INTEGER PRIMARY KEY,message_id TEXT NOT NULL,slot INTEGER NOT NULL,state TEXT NOT NULL)');db.commit()
+ retry_clear(db)
  last_check=None
  recovery_attempt=0
  def publish(state):

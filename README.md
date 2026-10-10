@@ -1,10 +1,12 @@
-# DJISMS for macOS 1.3.7
+# DJISMS for macOS 1.3.8（源码）
 
 Mac 本地短信接收工具，沿用经典界面。**这是绑定特定 QDC507 模块的研究版本，不是任意 DJI 模块通用安装包。** 不开发 iPhone 客户端；安卓版本独立维护。
 
 ## 下载与安装
 
-1. 下载 [最新 1.3.7 安装包](https://github.com/eric-zhou-xu/DJISMS/raw/refs/heads/main/downloads/DJISMS-1.3.7.zip) 和 [SHA256SUMS.txt](downloads/SHA256SUMS.txt)。仓库 downloads 目录只保留最新安装包。终端运行 `shasum -a 256 下载文件路径`，与清单核对。
+当前源码及本地部署为 **1.3.8**。仓库现有 ZIP 仍为 **1.3.7**；本次仅同步源码、测试及说明，不发布新安装包。要使用清空功能，请从当前源码构建。
+
+1. 下载 [现有 1.3.7 安装包](https://github.com/eric-zhou-xu/DJISMS/raw/refs/heads/main/downloads/DJISMS-1.3.7.zip) 和 [SHA256SUMS.txt](downloads/SHA256SUMS.txt)。仓库 downloads 目录只保留最新安装包。终端运行 `shasum -a 256 下载文件路径`，与清单核对。
 2. 要求 Apple Silicon；已验证环境为 macOS 27。其他系统及 Intel 未验证。需要 `/usr/local/bin/python3`，构建依赖 Apple Command Line Tools。
 3. 退出 DJISMS 界面，解压 ZIP，双击 **安装 DJISMS.command**。不要只拖动 App：接收服务也需要安装。
 4. 安装目标为 `~/Applications/DJISMS/DJISMS.app`，短信保存在同目录下的 `DJISMS 短信/`。安装脚本会备份旧应用与档案、合并旧主目录档案，再为当前用户注册登录启动及后台接收服务；不需要 sudo，不下载依赖。合并按短信 ID 去重、保留本机删除标记；原始 PDU 冲突或数据库损坏时停止迁移。备份仅保存在本机 `~/Library/Application Support/DJISMS App Backups/`，不上传。
@@ -33,7 +35,7 @@ Mac 本地短信接收工具，沿用经典界面。**这是绑定特定 QDC507 
 python3 build.py /tmp/DJISMS.app
 ```
 
-输出路径必须不存在。使用系统 Swift、Clang、AppKit、IOKit，无构建时动态下载。将构建的 DJISMS.app、install.py、migrate_archive.py 和“安装 DJISMS.command”放在同一目录安装。最新安装 ZIP 在 downloads/，包含安装说明与应用；源码在仓库中，哈希清单随包提供。
+输出路径必须不存在。使用系统 Swift、Clang、AppKit、IOKit，无构建时动态下载。将构建的 DJISMS.app、install.py、migrate_archive.py 和“安装 DJISMS.command”放在同一目录安装。现有 1.3.7 安装 ZIP 在 downloads/，不包含 1.3.8 清空功能。源码构建请使用当前仓库中的安装脚本，哈希清单仅对应已有 ZIP。
 
 ## 研究与测试
 
@@ -54,3 +56,12 @@ USB 重连修复：设备枚举后尚未就绪时进行有限次数重试（1、
 ## 1.3.7 统一目录
 
 应用与短信档案统一位于 `~/Applications/DJISMS/`。界面、后台接收、手动补查、本机删除及打开短信目录均使用该目录。内部后台组件与界面偏好仍由系统管理在当前用户 Library 中。更新前请退出界面；迁移期间暂停后台接收。ZIP 从干净源码构建，不包含私人短信、手机号词典、网络测试记录或剪贴板文件。
+
+
+## 1.3.8：清空现有记录
+设置新增“清空现有记录…”。先核对记录数量与本地路径，再由用户确认“永久清空”。取消不删除短信。删除预览中这批记录，确认期间新增短信保留。
+范围：当前短信数据库正文、生成的收件箱文本、对应 UI 阅读／SIM 记录及通知记录；保留接收配置。保留无正文的删除标记，防同一原件再次导入。外部导出和旧备份不删除，不宣称抹除系统备份或存储介质所有历史副本。
+清理与后台接收共用存储锁。跨文件失败时保留仅含 ID 的清理日志，下次补查或启动继续完成已确认的操作；不向模块或 SIM 发出删除命令。
+本地部署测试均使用隔离假数据；真实短信只验证取消和完整性，未执行清空。
+
+1.3.8 验证：`python3 -m unittest discover -s tests -v` 共 15 项通过，覆盖清空、保留设置、取消、空档案、重复调用、失败恢复、重启防重新导入及并发存储锁；已安装桥接组件用隔离假数据核对预览、无效确认标记、清空和重复请求。真实界面只测试取消，并核对记录及文本收件箱未变。原生构建和签名验证通过。完整系统休眠及更多硬件通知场景仍需测试。

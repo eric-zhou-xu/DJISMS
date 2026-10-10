@@ -82,7 +82,7 @@ final class CoreClient {
         var request = fields
         request["version"] = 1; request["id"] = id; request["method"] = method
         if let completion = completion { callbacks[id] = completion }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + (method == "clear_history" ? 180 : 15)) { [weak self] in
             guard let self = self, let callback = self.callbacks.removeValue(forKey: id) else { return }
             callback(["error": "核心服务未及时响应，当前状态未知"])
         }

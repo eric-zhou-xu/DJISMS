@@ -47,6 +47,10 @@ final class UIStore {
             if FileManager.default.fileExists(atPath: url.path) { data = try JSONDecoder().decode(UIData.self, from: Data(contentsOf: url)) }
         } catch { self.error = "界面偏好无法读取。原始短信仍安全保留。" }
     }
+    func reload() {
+        do {if FileManager.default.fileExists(atPath:url.path){data=try JSONDecoder().decode(UIData.self,from:Data(contentsOf:url))};error=nil}
+        catch {self.error="界面记录清理状态暂未确认，请退出后重新打开。"}
+    }
     func save() {
         guard error == nil else { return }
         do { let encoded = try JSONEncoder().encode(data); try encoded.write(to: url, options: .atomic); try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path) }
